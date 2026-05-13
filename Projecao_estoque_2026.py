@@ -9,9 +9,6 @@ Lógica: Preço Médio Ponderado mês a mês
   Saldo final     = Saldo R$ + Entradas R$ − Consumo R$
 
   ⚙️  Para atualizar todo mês: altere apenas MES_INICIO abaixo.
-
-  Obs: coluna 'Valor' dos pedidos = valor total do item (qtd × preço unitário).
-       Preço unitário = Valor / Qtd.a fornecer.
 """
 
 from pathlib import Path
@@ -25,7 +22,7 @@ import json
 MES_INICIO  = '2026-05-01'   # ← atualizar mensalmente
 
 PASTA_BASE  = Path(r'C:/Users/u10952/COBERTURA_BI/PROJEÇÃO_ESTOQUE')
-ARQ_ENTRADA = PASTA_BASE / 'ENTRADA.xlsx'
+ARQ_ENTRADA = PASTA_BASE / 'entrada.xlsx'
 ARQ_SAIDA   = PASTA_BASE / 'PROJECAO_ESTOQUE_FINANCEIRO_2026.xlsx'
 
 ABA_ESTOQUE = 'Estoque'
@@ -38,29 +35,46 @@ TODOS_MESES = pd.date_range('2026-01-01', '2026-12-01', freq='MS')
 CORTE = pd.Timestamp(MES_INICIO)
 MESES = [m for m in TODOS_MESES if m >= CORTE]
 
-COLUNAS_QTD_DI = [f'Soma de {s} DI'    for s in SIGLAS]
-COLUNAS_RS_DI  = [f'Soma de {s} DI R$' for s in SIGLAS]
+# Colunas do plano novo (sem "Soma de")
+COLUNAS_QTD_DI = [f'{s} DI'    for s in SIGLAS]
+COLUNAS_RS_DI  = [f'{s} DI R$' for s in SIGLAS]
+
+def mes_ptbr(m):
+    return m.strftime('%b/%y').upper()\
+        .replace('MAY','MAI').replace('AUG','AGO')\
+        .replace('SEP','SET').replace('OCT','OUT')\
+        .replace('DEC','DEZ')
 
 
 # ─────────────────────────────────────────────
 # LEITURA
 # ─────────────────────────────────────────────
 def ler_bases():
-    print(f"📂 Lendo bases... (projeção: {CORTE.strftime('%b/%y').upper()} → DEZ/26)")
+    print(f"📂 Lendo bases... (projeção: {mes_ptbr(CORTE)} → DEZ/26)")
 
     # ── ESTOQUE ──────────────────────────────
     df_est = pd.read_excel(ARQ_ENTRADA, sheet_name=ABA_ESTOQUE, header=0)
     df_est['chave'] = (
-        df_est['CÓD MATERIAL'].astype(str).str.strip() +
+        df_est['CÓD MATERIAL'].astype(str).str.strip() + '|' +
         df_est['EMPRESA'].astype(str).str.strip()
     )
+    df_est['cod']      = df_est['CÓD MATERIAL'].astype(str).str.strip()
+    df_est['empresa']  = df_est['EMPRESA'].astype(str).str.strip()
+    df_est['descricao']= df_est['DESCRIÇÃO MATERIAL'].astype(str).str.strip() if 'DESCRIÇÃO MATERIAL' in df_est.columns else ''
+
     df_est['Qtd_estoque']   = pd.to_numeric(df_est['QUANTIDADE'], errors='coerce').fillna(0)
     df_est['Valor_estoque'] = pd.to_numeric(df_est['VALOR'],      errors='coerce').fillna(0)
 
+    df_meta = df_est.groupby('chave', as_index=False).agg(
+        cod       = ('cod',       'first'),
+        empresa   = ('empresa',   'first'),
+        descricao = ('descricao', 'first')
+    )
     df_est = df_est.groupby('chave', as_index=False).agg(
         Qtd_estoque   = ('Qtd_estoque',  'sum'),
         Valor_estoque = ('Valor_estoque', 'sum')
     )
+    df_est = df_est.merge(df_meta, on='chave', how='left')
     df_est['Preco_medio_ini'] = np.where(
         df_est['Qtd_estoque'] > 0,
         df_est['Valor_estoque'] / df_est['Qtd_estoque'],
@@ -71,39 +85,29 @@ def ler_bases():
     # ── PEDIDOS ───────────────────────────────
     df_ped = pd.read_excel(ARQ_ENTRADA, sheet_name=ABA_PEDIDOS, header=0)
     df_ped['chave'] = (
-        df_ped['Material'].astype(str).str.strip() +
+        df_ped['Material'].astype(str).str.strip() + '|' +
         df_ped['EMPRESA'].astype(str).str.strip()
     )
     df_ped['Data_entrega'] = pd.to_datetime(df_ped['Data de remessa'], dayfirst=True, errors='coerce')
     df_ped['Qtd_pedido']   = pd.to_numeric(df_ped['Qtd.a fornecer'], errors='coerce').fillna(0)
+    df_ped['Valor_total']  = pd.to_numeric(df_ped['Valor'], errors='coerce').fillna(0)
+    df_ped['Mes_entrega']  = df_ped['Data_entrega'].dt.to_period('M').dt.to_timestamp()
 
-    # Valor já é o total do item — preço unitário = Valor / Qtd
-    df_ped['Valor_total'] = pd.to_numeric(df_ped['Valor'], errors='coerce').fillna(0)
-    df_ped['Preco_unit']  = np.where(
-        df_ped['Qtd_pedido'] > 0,
-        df_ped['Valor_total'] / df_ped['Qtd_pedido'],
-        0.0
-    )
-
-    df_ped['Mes_entrega'] = df_ped['Data_entrega'].dt.to_period('M').dt.to_timestamp()
-
-    # Filtra apenas entregas a partir do corte e com quantidade pendente
     df_ped = df_ped[
         (df_ped['Qtd_pedido'] > 0) &
         (df_ped['Mes_entrega'] >= CORTE)
     ].copy()
 
-    # Valor_entrada = valor total já está pronto (não multiplica de novo)
     entradas = df_ped.groupby(['chave', 'Mes_entrega'], as_index=False).agg(
-        Qtd_entrada   = ('Qtd_pedido',   'sum'),
-        Valor_entrada = ('Valor_total',   'sum')   # ← soma dos valores totais por mês
+        Qtd_entrada   = ('Qtd_pedido',  'sum'),
+        Valor_entrada = ('Valor_total',  'sum')
     )
-    print(f"  ✅ Pedidos: {len(entradas)} entradas mensais por material (>= {CORTE.strftime('%b/%y').upper()})")
+    print(f"  ✅ Pedidos: {len(entradas)} entradas mensais por material (>= {mes_ptbr(CORTE)})")
 
     # ── PLANO ─────────────────────────────────
     df_plano = pd.read_excel(ARQ_ENTRADA, sheet_name=ABA_PLANO, header=0)
     df_plano['chave'] = (
-        df_plano['COD'].astype(str).str.strip() +
+        df_plano['COD'].astype(str).str.strip() + '|' +
         df_plano['EMPRESA'].astype(str).str.strip()
     )
 
@@ -132,7 +136,7 @@ def ler_bases():
         df_consumo = df_consumo.groupby(['chave', 'Mes'], as_index=False).agg(
             Qtd_consumo=('Qtd_consumo', 'sum')
         )
-    print(f"  ✅ Plano: {len(df_consumo)} consumos mensais por material (>= {CORTE.strftime('%b/%y').upper()})")
+    print(f"  ✅ Plano: {len(df_consumo)} consumos mensais por material (>= {mes_ptbr(CORTE)})")
 
     return df_est, entradas, df_consumo
 
@@ -145,6 +149,9 @@ def projetar(df_est, df_entradas, df_consumo):
 
     saldo_qtd = df_est.set_index('chave')['Qtd_estoque'].to_dict()
     saldo_rs  = df_est.set_index('chave')['Valor_estoque'].to_dict()
+    meta_cod  = df_est.set_index('chave')['cod'].to_dict()
+    meta_emp  = df_est.set_index('chave')['empresa'].to_dict()
+    meta_desc = df_est.set_index('chave')['descricao'].to_dict()
 
     ent_idx = (
         df_entradas.set_index(['chave', 'Mes_entrega'])
@@ -160,6 +167,13 @@ def projetar(df_est, df_entradas, df_consumo):
         set(df_entradas['chave'].unique()) |
         set(df_consumo['chave'].unique())
     )
+
+    for chave in todas_chaves:
+        if chave not in meta_cod:
+            partes = chave.split('|')
+            meta_cod[chave]  = partes[0] if len(partes) > 0 else chave
+            meta_emp[chave]  = partes[1] if len(partes) > 1 else ''
+            meta_desc[chave] = ''
 
     linhas = []
 
@@ -182,7 +196,7 @@ def projetar(df_est, df_entradas, df_consumo):
             rs_disp     = rs  + rs_ent
             preco_medio = rs_disp / qtd_disp if qtd_disp > 0 else 0.0
 
-            # Consumo valorado pelo preço médio
+            # Consumo
             try:
                 c = con_idx.loc[(chave, mes)]
                 qtd_con = float(c['Qtd_consumo']) if isinstance(c, pd.Series) else float(c['Qtd_consumo'].sum())
@@ -196,17 +210,19 @@ def projetar(df_est, df_entradas, df_consumo):
             rs_final  = max(rs_disp  - rs_con,  0.0)
 
             linhas.append({
-                'Chave':       chave,
-                'Mês':         mes.strftime('%b/%y').upper(),
-                'Qtd_ini':     round(qtd, 4),
-                'RS_ini':      round(rs, 2),
-                'Qtd_entrada': round(qtd_ent, 4),
-                'RS_entrada':  round(rs_ent, 2),
-                'Preço_médio': round(preco_medio, 4),
-                'Qtd_consumo': round(qtd_con, 4),
-                'RS_consumo':  round(rs_con, 2),
-                'Qtd_final':   round(qtd_final, 4),
-                'RS_final':    round(rs_final, 2),
+                'cod':         meta_cod.get(chave, ''),
+                'empresa':     meta_emp.get(chave, ''),
+                'descricao':   meta_desc.get(chave, ''),
+                'mes':         mes_ptbr(mes),
+                'qtd_ini':     round(qtd, 2),
+                'rs_ini':      round(rs, 2),
+                'qtd_entrada': round(qtd_ent, 2),
+                'rs_entrada':  round(rs_ent, 2),
+                'preco_medio': round(preco_medio, 4),
+                'qtd_consumo': round(qtd_con, 2),
+                'rs_consumo':  round(rs_con, 2),
+                'qtd_final':   round(qtd_final, 2),
+                'rs_final':    round(rs_final, 2),
             })
 
             qtd, rs = qtd_final, rs_final
@@ -215,60 +231,47 @@ def projetar(df_est, df_entradas, df_consumo):
 
 
 # ─────────────────────────────────────────────
-# RESUMO MENSAL (visão BI)
+# RESUMO MENSAL
 # ─────────────────────────────────────────────
 def resumo_mensal(df_proj):
-    r = df_proj.groupby('Mês', sort=False).agg(
-        **{'Estoque inicial (R$)': ('RS_ini',     'sum'),
-           'Entradas (R$)':        ('RS_entrada', 'sum'),
-           'Consumo (R$)':         ('RS_consumo', 'sum'),
-           'Saldo final (R$)':     ('RS_final',   'sum')}
+    r = df_proj.groupby('mes', sort=False).agg(
+        **{'Estoque inicial (R$)': ('rs_ini',     'sum'),
+           'Entradas (R$)':        ('rs_entrada', 'sum'),
+           'Consumo (R$)':         ('rs_consumo', 'sum'),
+           'Saldo final (R$)':     ('rs_final',   'sum')}
     ).reset_index()
 
-    ordem = [m.strftime('%b/%y').upper() for m in MESES]
-    r['_ord'] = r['Mês'].map({m: i for i, m in enumerate(ordem)})
+    ordem = [mes_ptbr(m) for m in MESES]
+    r['_ord'] = r['mes'].map({m: i for i, m in enumerate(ordem)})
     r = r.sort_values('_ord').drop(columns='_ord')
-
-    # Formata para leitura no terminal
-    for col in ['Estoque inicial (R$)', 'Entradas (R$)', 'Consumo (R$)', 'Saldo final (R$)']:
-        r[col] = r[col].apply(lambda v: f'R$ {v:,.0f}'.replace(',', 'X').replace('.', ',').replace('X', '.'))
-
+    r.rename(columns={'mes': 'Mês'}, inplace=True)
     return r
 
 
 # ─────────────────────────────────────────────
 # EXPORTAÇÃO
 # ─────────────────────────────────────────────
-def exportar(df_proj):
-    print(f"\n💾 Salvando em: {ARQ_SAIDA}")
-
-    df_resumo_excel = df_proj.groupby('Mês', sort=False).agg(
-        **{'Estoque inicial (R$)': ('RS_ini',     'sum'),
-           'Entradas (R$)':        ('RS_entrada', 'sum'),
-           'Consumo (R$)':         ('RS_consumo', 'sum'),
-           'Saldo final (R$)':     ('RS_final',   'sum')}
-    ).reset_index()
-    ordem = [m.strftime('%b/%y').upper() for m in MESES]
-    df_resumo_excel['_ord'] = df_resumo_excel['Mês'].map({m: i for i, m in enumerate(ordem)})
-    df_resumo_excel = df_resumo_excel.sort_values('_ord').drop(columns='_ord')
+def exportar(df_proj, df_resumo):
+    print(f"\n💾 Salvando Excel em: {ARQ_SAIDA}")
     with pd.ExcelWriter(ARQ_SAIDA, engine='openpyxl') as writer:
-        df_resumo_excel.to_excel(writer, sheet_name='RESUMO MENSAL',        index=False)
-        df_proj.to_excel(writer,         sheet_name='DETALHE POR MATERIAL',  index=False)    
+        df_resumo.to_excel(writer, sheet_name='RESUMO MENSAL',        index=False)
+        df_proj.to_excel(writer,   sheet_name='DETALHE POR MATERIAL',  index=False)
+    print("✅ Excel salvo!")
 
-    print("✅ Arquivo salvo com sucesso!")
-    resumo_json = df_resumo_excel.rename(columns={
-        'Mês':                 'mes',
-        'Estoque inicial (R$)':'ini',
-        'Entradas (R$)':       'ent',
-        'Consumo (R$)':        'con',
-        'Saldo final (R$)':    'sal'
+    # JSON resumo
+    resumo_json = df_resumo.rename(columns={
+        'Mês':'mes','Estoque inicial (R$)':'ini',
+        'Entradas (R$)':'ent','Consumo (R$)':'con','Saldo final (R$)':'sal'
     }).to_dict(orient='records')
-
     with open(PASTA_BASE / 'projecao_2026.json', 'w', encoding='utf-8') as f:
         json.dump(resumo_json, f, ensure_ascii=False)
+    print("✅ projecao_2026.json salvo!")
 
-    print("✅ JSON salvo: projecao_2026.json")
-    
+    # JSON detalhe
+    detalhe_json = df_proj.to_dict(orient='records')
+    with open(PASTA_BASE / 'detalhe_2026.json', 'w', encoding='utf-8') as f:
+        json.dump(detalhe_json, f, ensure_ascii=False, default=str)
+    print("✅ detalhe_2026.json salvo!")
 
 
 # ─────────────────────────────────────────────
@@ -280,9 +283,10 @@ def executar():
     df_resumo = resumo_mensal(df_proj)
 
     print("\n📊 RESUMO DA PROJEÇÃO 2026:")
-    print(df_resumo.to_string(index=False))
+    for _, row in df_resumo.iterrows():
+        print(f"  {row['Mês']:>7}  ini={row['Estoque inicial (R$)']:>15,.0f}  ent={row['Entradas (R$)']:>15,.0f}  con={row['Consumo (R$)']:>15,.0f}  sal={row['Saldo final (R$)']:>15,.0f}")
 
-    exportar(df_proj)
+    exportar(df_proj, df_resumo)
 
 
 if __name__ == '__main__':
