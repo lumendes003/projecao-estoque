@@ -1,0 +1,489 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Detalhe por Material — EQTL 2026</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500&display=swap');
+
+  :root {
+    --azul:     #0D2E5C;
+    --azul-mid: #185FA5;
+    --verde:    #1D9E75;
+    --laranja:  #D85A30;
+    --borda:    #D3D1C7;
+    --bg:       #F7F6F2;
+    --branco:   #FFFFFF;
+    --texto:    #2C2C2A;
+    --texto2:   #5F5E5A;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'IBM Plex Sans', sans-serif;
+    background: var(--bg);
+    color: var(--texto);
+    padding: 1.5rem;
+  }
+
+  /* TOPO */
+  .topo {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    margin-bottom: 1rem;
+    padding-bottom: 1rem;
+    border-bottom: 1px solid var(--borda);
+  }
+
+  .topo h1 { font-size: 18px; font-weight: 500; color: var(--azul); }
+  .topo p  { font-size: 12px; color: var(--texto2); margin-top: 2px; }
+
+  .badge {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    background: var(--azul);
+    color: #fff;
+    padding: 4px 12px;
+    border-radius: 20px;
+  }
+
+  /* FILTROS */
+  .filtros {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-bottom: 1rem;
+    align-items: flex-end;
+  }
+
+  .filtro-grupo { display: flex; flex-direction: column; gap: 4px; }
+  .filtro-grupo label { font-size: 11px; color: var(--texto2); font-weight: 500; text-transform: uppercase; letter-spacing: 0.5px; }
+
+  select, input[type=text] {
+    font-family: 'IBM Plex Sans', sans-serif;
+    font-size: 13px;
+    padding: 6px 10px;
+    border: 1px solid var(--borda);
+    border-radius: 6px;
+    background: var(--branco);
+    color: var(--texto);
+    min-width: 150px;
+  }
+
+  input[type=text] { min-width: 220px; }
+
+  .btn-limpar {
+    font-family: 'IBM Plex Sans', sans-serif;
+    font-size: 12px;
+    padding: 7px 14px;
+    border: 1px solid var(--borda);
+    border-radius: 6px;
+    background: var(--branco);
+    color: var(--texto2);
+    cursor: pointer;
+    align-self: flex-end;
+  }
+
+  .btn-limpar:hover { background: var(--bg); }
+
+  /* INFO */
+  .info-bar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.5rem;
+    font-size: 12px;
+    color: var(--texto2);
+  }
+
+  /* SELETOR DE MÊS */
+  .mes-tabs {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+
+  .mes-tab {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    padding: 4px 12px;
+    border: 1px solid var(--borda);
+    border-radius: 20px;
+    background: var(--branco);
+    color: var(--texto2);
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+
+  .mes-tab.ativo {
+    background: var(--azul);
+    color: #fff;
+    border-color: var(--azul);
+  }
+
+  .mes-tab:hover:not(.ativo) { background: var(--bg); }
+
+  /* TABELA */
+  .tabela-wrap {
+    background: var(--branco);
+    border: 1px solid var(--borda);
+    border-radius: 10px;
+    overflow: hidden;
+    margin-top: 0.75rem;
+  }
+
+  .tabela-scroll { overflow-x: auto; }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+  }
+
+  thead th {
+    padding: 9px 12px;
+    text-align: right;
+    font-size: 10px;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    color: var(--texto2);
+    background: #FAFAF8;
+    border-bottom: 1px solid var(--borda);
+    white-space: nowrap;
+    cursor: pointer;
+    user-select: none;
+  }
+
+  thead th:hover { background: #F0EFE8; }
+  thead th.sort-asc::after  { content: ' ↑'; color: var(--azul-mid); }
+  thead th.sort-desc::after { content: ' ↓'; color: var(--azul-mid); }
+  thead th:first-child, thead th:nth-child(2), thead th:nth-child(3) { text-align: left; }
+
+  tbody tr { transition: background 0.1s; }
+  tbody tr:hover { background: #FAFAF8; }
+
+  tbody td {
+    padding: 8px 12px;
+    text-align: right;
+    border-bottom: 0.5px solid var(--borda);
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    color: var(--texto);
+    white-space: nowrap;
+  }
+
+  tbody td:first-child {
+    text-align: left;
+    font-family: 'IBM Plex Sans', sans-serif;
+    font-weight: 500;
+    font-size: 12px;
+    color: var(--azul);
+  }
+
+  tbody td:nth-child(2) {
+    text-align: left;
+    font-family: 'IBM Plex Sans', sans-serif;
+    font-size: 11px;
+    color: var(--texto2);
+  }
+
+  tbody td:nth-child(3) {
+    text-align: left;
+    font-family: 'IBM Plex Sans', sans-serif;
+    font-size: 11px;
+    max-width: 200px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  tbody tr:last-child td { border-bottom: none; }
+
+  .pos { color: var(--verde) !important; }
+  .neg { color: var(--laranja) !important; }
+
+  /* PAGINAÇÃO */
+  .paginacao {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.75rem 1rem;
+    border-top: 1px solid var(--borda);
+    font-size: 12px;
+    color: var(--texto2);
+    background: #FAFAF8;
+  }
+
+  .pag-btns { display: flex; gap: 6px; }
+
+  .pag-btn {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    padding: 4px 10px;
+    border: 1px solid var(--borda);
+    border-radius: 6px;
+    background: var(--branco);
+    color: var(--texto);
+    cursor: pointer;
+  }
+
+  .pag-btn:hover:not(:disabled) { background: var(--bg); }
+  .pag-btn:disabled { opacity: 0.4; cursor: default; }
+  .pag-btn.ativo { background: var(--azul); color: #fff; border-color: var(--azul); }
+
+  /* LOADING */
+  #loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 3rem;
+    gap: 12px;
+    color: var(--texto2);
+    font-size: 13px;
+  }
+
+  .spinner {
+    width: 24px; height: 24px;
+    border: 2px solid var(--borda);
+    border-top-color: var(--azul-mid);
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+  }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  #app { display: none; }
+</style>
+</head>
+<body>
+
+<div id="loading">
+  <div class="spinner"></div>
+  <span>Carregando dados...</span>
+</div>
+
+<div id="app">
+  <div class="topo">
+    <div>
+      <h1>Detalhe por Material — EQTL 2026</h1>
+      <p>Validação por material · Quantidade e valor financeiro</p>
+    </div>
+    <span class="badge" id="badge-total"></span>
+  </div>
+
+  <div class="filtros">
+    <div class="filtro-grupo">
+      <label>Empresa</label>
+      <select id="f-empresa">
+        <option value="">Todas</option>
+      </select>
+    </div>
+    <div class="filtro-grupo">
+      <label>Material / Descrição</label>
+      <input type="text" id="f-material" placeholder="Buscar código ou descrição...">
+    </div>
+    <button class="btn-limpar" onclick="limparFiltros()">✕ Limpar filtros</button>
+  </div>
+
+  <div class="info-bar">
+    <div class="mes-tabs" id="mes-tabs"></div>
+    <span id="info-count"></span>
+  </div>
+
+  <div class="tabela-wrap">
+    <div class="tabela-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th onclick="ordenar('cod')">Cód. Material</th>
+            <th onclick="ordenar('empresa')">Empresa</th>
+            <th onclick="ordenar('descricao')">Descrição</th>
+            <th onclick="ordenar('qtd_ini')">Qtd Ini</th>
+            <th onclick="ordenar('rs_ini')">R$ Ini</th>
+            <th onclick="ordenar('qtd_entrada')" class="pos">Qtd Entrada</th>
+            <th onclick="ordenar('rs_entrada')" class="pos">R$ Entrada</th>
+            <th onclick="ordenar('preco_medio')">Preço Médio</th>
+            <th onclick="ordenar('qtd_consumo')" class="neg">Qtd Consumo</th>
+            <th onclick="ordenar('rs_consumo')" class="neg">R$ Consumo</th>
+            <th onclick="ordenar('qtd_final')">Qtd Final</th>
+            <th onclick="ordenar('rs_final')">R$ Final</th>
+          </tr>
+        </thead>
+        <tbody id="tbody"></tbody>
+      </table>
+    </div>
+    <div class="paginacao">
+      <span id="pag-info"></span>
+      <div class="pag-btns" id="pag-btns"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const POR_PAGINA = 50;
+let DADOS = [];
+let FILTRADOS = [];
+let pagina = 1;
+let mesSel = '';
+let sortCol = 'cod';
+let sortDir = 1;
+
+function fmtN(v){ return v === 0 ? '—' : v.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+function fmtRS(v){ return v === 0 ? '—' : v.toLocaleString('pt-BR',{style:'currency',currency:'BRL',minimumFractionDigits:0,maximumFractionDigits:0}); }
+function fmtPM(v){ return v === 0 ? '—' : v.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+
+function filtrar(){
+  const emp = document.getElementById('f-empresa').value;
+  const mat = document.getElementById('f-material').value.toLowerCase().trim();
+
+  FILTRADOS = DADOS.filter(r => {
+    if(r.mes !== mesSel) return false;
+    if(emp && r.empresa !== emp) return false;
+    if(mat && !r.cod.toLowerCase().includes(mat) && !r.descricao.toLowerCase().includes(mat)) return false;
+    return true;
+  });
+
+  // Ordena
+  FILTRADOS.sort((a,b)=>{
+    const va = a[sortCol] ?? '';
+    const vb = b[sortCol] ?? '';
+    if(typeof va === 'number') return (va - vb) * sortDir;
+    return String(va).localeCompare(String(vb)) * sortDir;
+  });
+
+  pagina = 1;
+  renderTabela();
+}
+
+function ordenar(col){
+  if(sortCol === col) sortDir *= -1;
+  else { sortCol = col; sortDir = 1; }
+  document.querySelectorAll('thead th').forEach(th => {
+    th.classList.remove('sort-asc','sort-desc');
+  });
+  const idx = ['cod','empresa','descricao','qtd_ini','rs_ini','qtd_entrada','rs_entrada','preco_medio','qtd_consumo','rs_consumo','qtd_final','rs_final'].indexOf(col);
+  const ths = document.querySelectorAll('thead th');
+  if(ths[idx]) ths[idx].classList.add(sortDir === 1 ? 'sort-asc' : 'sort-desc');
+  filtrar();
+}
+
+function renderTabela(){
+  const total = FILTRADOS.length;
+  const totalPags = Math.ceil(total / POR_PAGINA);
+  const ini = (pagina-1) * POR_PAGINA;
+  const fim = Math.min(ini + POR_PAGINA, total);
+  const slice = FILTRADOS.slice(ini, fim);
+
+  document.getElementById('info-count').textContent =
+    `${total.toLocaleString('pt-BR')} materiais encontrados`;
+
+  document.getElementById('tbody').innerHTML = slice.length === 0
+    ? '<tr><td colspan="12" style="text-align:center;padding:2rem;color:var(--texto2)">Nenhum material encontrado</td></tr>'
+    : slice.map(r => `
+      <tr>
+        <td>${r.cod}</td>
+        <td>${r.empresa}</td>
+        <td title="${r.descricao}">${r.descricao}</td>
+        <td>${fmtN(r.qtd_ini)}</td>
+        <td>${fmtRS(r.rs_ini)}</td>
+        <td class="${r.qtd_entrada > 0 ? 'pos' : ''}">${fmtN(r.qtd_entrada)}</td>
+        <td class="${r.rs_entrada > 0 ? 'pos' : ''}">${fmtRS(r.rs_entrada)}</td>
+        <td>${fmtPM(r.preco_medio)}</td>
+        <td class="${r.qtd_consumo > 0 ? 'neg' : ''}">${fmtN(r.qtd_consumo)}</td>
+        <td class="${r.rs_consumo > 0 ? 'neg' : ''}">${fmtRS(r.rs_consumo)}</td>
+        <td style="font-weight:500">${fmtN(r.qtd_final)}</td>
+        <td style="font-weight:500">${fmtRS(r.rs_final)}</td>
+      </tr>
+    `).join('');
+
+  // Paginação
+  document.getElementById('pag-info').textContent =
+    `Página ${pagina} de ${totalPags || 1} · ${ini+1}–${fim} de ${total}`;
+
+  const btns = document.getElementById('pag-btns');
+  btns.innerHTML = '';
+
+  const addBtn = (label, p, disabled=false, ativo=false) => {
+    const b = document.createElement('button');
+    b.className = 'pag-btn' + (ativo ? ' ativo' : '');
+    b.textContent = label;
+    b.disabled = disabled;
+    b.onclick = () => { pagina = p; renderTabela(); window.scrollTo(0,0); };
+    btns.appendChild(b);
+  };
+
+  addBtn('«', 1, pagina===1);
+  addBtn('‹', pagina-1, pagina===1);
+
+  const start = Math.max(1, pagina-2);
+  const end   = Math.min(totalPags, pagina+2);
+  for(let p=start; p<=end; p++) addBtn(p, p, false, p===pagina);
+
+  addBtn('›', pagina+1, pagina===totalPags || totalPags===0);
+  addBtn('»', totalPags, pagina===totalPags || totalPags===0);
+}
+
+function limparFiltros(){
+  document.getElementById('f-empresa').value = '';
+  document.getElementById('f-material').value = '';
+  filtrar();
+}
+
+function inicializar(dados){
+  DADOS = dados;
+
+  // Empresas
+  const empresas = [...new Set(dados.map(r=>r.empresa))].sort();
+  const selEmp = document.getElementById('f-empresa');
+  empresas.forEach(e => {
+    const o = document.createElement('option');
+    o.value = e; o.textContent = e;
+    selEmp.appendChild(o);
+  });
+
+  // Meses
+  const meses = [...new Set(dados.map(r=>r.mes))];
+  mesSel = meses[0];
+  const tabsMes = document.getElementById('mes-tabs');
+  meses.forEach(m => {
+    const b = document.createElement('button');
+    b.className = 'mes-tab' + (m === mesSel ? ' ativo' : '');
+    b.textContent = m;
+    b.onclick = () => {
+      mesSel = m;
+      document.querySelectorAll('.mes-tab').forEach(x => x.classList.remove('ativo'));
+      b.classList.add('ativo');
+      filtrar();
+    };
+    tabsMes.appendChild(b);
+  });
+
+  // Badge total
+  const totalMat = new Set(dados.map(r=>r.cod+'|'+r.empresa)).size;
+  document.getElementById('badge-total').textContent =
+    totalMat.toLocaleString('pt-BR') + ' materiais';
+
+  // Filtros
+  ['f-empresa'].forEach(id => document.getElementById(id).addEventListener('change', filtrar));
+  document.getElementById('f-material').addEventListener('input', ()=>{ pagina=1; filtrar(); });
+
+  filtrar();
+
+  document.getElementById('loading').style.display = 'none';
+  document.getElementById('app').style.display = 'block';
+}
+
+fetch('detalhe_2026_v2.json')
+  .then(r => { if(!r.ok) throw new Error('Arquivo não encontrado'); return r.json(); })
+  .then(dados => inicializar(dados))
+  .catch(err => {
+    document.getElementById('loading').innerHTML =
+      `<span style="color:#D85A30">⚠️ Erro ao carregar detalhe_2026.json<br><small>${err.message}</small></span>`;
+  });
+</script>
+</body>
+</html>

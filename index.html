@@ -269,7 +269,7 @@ document.getElementById('badge-data').textContent =
   'Atualizado '+hoje.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric'});
 
 // Carrega só o detalhe (tem tudo que precisa)
-fetch('detalhe_2026.json')
+fetch('detalhe_2026_v2.json')
   .then(r=>{ if(!r.ok) throw new Error('Arquivo não encontrado'); return r.json(); })
   .then(dados=>{
     DETALHE = dados;
