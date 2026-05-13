@@ -1,0 +1,546 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Projeção de Estoque — EQTL 2026</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@300;400;500&display=swap');
+
+  :root {
+    --azul:      #0D2E5C;
+    --azul-mid:  #185FA5;
+    --azul-bg:   #EAF2FB;
+    --verde:     #1D9E75;
+    --verde-bg:  #E1F5EE;
+    --laranja:   #D85A30;
+    --laranja-bg:#FAECE7;
+    --cinza:     #5F5E5A;
+    --borda:     #D3D1C7;
+    --bg:        #F7F6F2;
+    --branco:    #FFFFFF;
+    --texto:     #2C2C2A;
+    --texto2:    #5F5E5A;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'IBM Plex Sans', sans-serif;
+    background: var(--bg);
+    color: var(--texto);
+    min-height: 100vh;
+    padding: 2rem;
+  }
+
+  /* LOADING */
+  #loading {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 60vh;
+    gap: 16px;
+    color: var(--texto2);
+    font-size: 14px;
+  }
+
+  .spinner {
+    width: 32px; height: 32px;
+    border: 3px solid var(--borda);
+    border-top-color: var(--azul-mid);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  #app { display: none; }
+
+  /* TOPO */
+  .topo {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    margin-bottom: 1.5rem;
+    padding-bottom: 1rem;
+    border-bottom: 1px solid var(--borda);
+  }
+
+  .topo-esq h1 {
+    font-size: 22px;
+    font-weight: 500;
+    color: var(--azul);
+    letter-spacing: -0.5px;
+  }
+
+  .topo-esq p {
+    font-size: 13px;
+    color: var(--texto2);
+    margin-top: 3px;
+  }
+
+  .badge-data {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    background: var(--azul);
+    color: #fff;
+    padding: 4px 12px;
+    border-radius: 20px;
+    letter-spacing: 0.5px;
+  }
+
+  /* CARDS */
+  .cards {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+    margin-bottom: 1.5rem;
+  }
+
+  @media(max-width: 700px) {
+    .cards { grid-template-columns: repeat(2, 1fr); }
+  }
+
+  .card {
+    background: var(--branco);
+    border: 1px solid var(--borda);
+    border-radius: 10px;
+    padding: 1rem 1.25rem;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 3px;
+  }
+
+  .card.azul::before    { background: var(--azul-mid); }
+  .card.verde::before   { background: var(--verde); }
+  .card.laranja::before { background: var(--laranja); }
+  .card.destaque::before{ background: var(--azul); }
+
+  .card-label {
+    font-size: 11px;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    color: var(--texto2);
+    margin-bottom: 8px;
+  }
+
+  .card-valor {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 19px;
+    font-weight: 500;
+    color: var(--texto);
+    line-height: 1;
+  }
+
+  .card.verde .card-valor   { color: var(--verde); }
+  .card.laranja .card-valor { color: var(--laranja); }
+  .card.destaque .card-valor{ color: var(--azul); }
+
+  .card-sub {
+    font-size: 11px;
+    color: var(--texto2);
+    margin-top: 6px;
+  }
+
+  /* GRÁFICO */
+  .grafico-wrap {
+    background: var(--branco);
+    border: 1px solid var(--borda);
+    border-radius: 10px;
+    padding: 1.25rem 1.5rem;
+    margin-bottom: 1.5rem;
+  }
+
+  .grafico-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1rem;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .grafico-titulo {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--texto);
+  }
+
+  .legenda {
+    display: flex;
+    gap: 16px;
+    font-size: 11px;
+    color: var(--texto2);
+    flex-wrap: wrap;
+  }
+
+  .legenda span { display: flex; align-items: center; gap: 5px; }
+
+  .leg-sq {
+    width: 10px; height: 10px;
+    border-radius: 2px;
+    flex-shrink: 0;
+  }
+
+  .canvas-container { position: relative; height: 280px; }
+
+  /* TABELA */
+  .tabela-wrap {
+    background: var(--branco);
+    border: 1px solid var(--borda);
+    border-radius: 10px;
+    overflow: hidden;
+  }
+
+  .tabela-header {
+    padding: 1rem 1.5rem;
+    border-bottom: 1px solid var(--borda);
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--texto);
+  }
+
+  .tabela-scroll { overflow-x: auto; }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+
+  thead th {
+    padding: 10px 16px;
+    text-align: right;
+    font-size: 11px;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    color: var(--texto2);
+    background: #FAFAF8;
+    border-bottom: 1px solid var(--borda);
+    white-space: nowrap;
+  }
+
+  thead th:first-child { text-align: left; }
+  tbody tr { transition: background 0.15s; }
+  tbody tr:hover { background: #FAFAF8; }
+
+  tbody td {
+    padding: 11px 16px;
+    text-align: right;
+    border-bottom: 0.5px solid var(--borda);
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    color: var(--texto);
+  }
+
+  tbody td:first-child {
+    text-align: left;
+    font-family: 'IBM Plex Sans', sans-serif;
+    font-weight: 500;
+    font-size: 13px;
+    color: var(--azul);
+  }
+
+  tbody tr:last-child td { border-bottom: none; }
+
+  tfoot td {
+    padding: 11px 16px;
+    text-align: right;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    font-weight: 500;
+    background: #F7F6F2;
+    border-top: 1px solid var(--borda);
+    color: var(--texto);
+  }
+
+  tfoot td:first-child {
+    text-align: left;
+    font-family: 'IBM Plex Sans', sans-serif;
+    font-size: 13px;
+    color: var(--texto2);
+  }
+
+  .pos { color: var(--verde) !important; }
+  .neg { color: var(--laranja) !important; }
+
+  .var-pos {
+    display: inline-block;
+    background: var(--verde-bg);
+    color: var(--verde);
+    font-size: 10px;
+    padding: 2px 7px;
+    border-radius: 20px;
+    font-family: 'IBM Plex Mono', monospace;
+  }
+
+  .var-neg {
+    display: inline-block;
+    background: var(--laranja-bg);
+    color: var(--laranja);
+    font-size: 10px;
+    padding: 2px 7px;
+    border-radius: 20px;
+    font-family: 'IBM Plex Mono', monospace;
+  }
+
+  .rodape {
+    margin-top: 1.5rem;
+    font-size: 11px;
+    color: var(--texto2);
+    text-align: center;
+    padding-top: 1rem;
+    border-top: 1px solid var(--borda);
+  }
+</style>
+</head>
+<body>
+
+<div id="loading">
+  <div class="spinner"></div>
+  <span>Carregando projeção...</span>
+</div>
+
+<div id="app">
+  <div class="topo">
+    <div class="topo-esq">
+      <h1>Projeção de Estoque · EQTL 2026</h1>
+      <p>Preço médio ponderado · Todas as distribuidoras</p>
+    </div>
+    <span class="badge-data" id="badge-data"></span>
+  </div>
+
+  <div class="cards">
+    <div class="card azul">
+      <div class="card-label">Estoque inicial</div>
+      <div class="card-valor" id="c-ini"></div>
+      <div class="card-sub" id="c-ini-mes">Saldo real atualizado</div>
+    </div>
+    <div class="card verde">
+      <div class="card-label">Total entradas</div>
+      <div class="card-valor" id="c-ent"></div>
+      <div class="card-sub" id="c-ent-per">Pedidos em aberto</div>
+    </div>
+    <div class="card laranja">
+      <div class="card-label">Total consumo</div>
+      <div class="card-valor" id="c-con"></div>
+      <div class="card-sub" id="c-con-per">Plano de demanda</div>
+    </div>
+    <div class="card destaque">
+      <div class="card-label">Saldo projetado</div>
+      <div class="card-valor" id="c-sal"></div>
+      <div class="card-sub" id="c-sal-mes">Resultado final</div>
+    </div>
+  </div>
+
+  <div class="grafico-wrap">
+    <div class="grafico-header">
+      <span class="grafico-titulo">Evolução mensal do estoque (R$ Mi)</span>
+      <div class="legenda">
+        <span><span class="leg-sq" style="background:#185FA5"></span>Saldo final</span>
+        <span><span class="leg-sq" style="background:#1D9E75"></span>Entradas</span>
+        <span><span class="leg-sq" style="background:#D85A30;opacity:0.8"></span>Consumo</span>
+      </div>
+    </div>
+    <div class="canvas-container">
+      <canvas id="chart" role="img" aria-label="Gráfico de barras com evolução mensal do estoque EQTL 2026">
+        Saldo projetado de estoque EQTL 2026.
+      </canvas>
+    </div>
+  </div>
+
+  <div class="tabela-wrap">
+    <div class="tabela-header">Detalhe mensal</div>
+    <div class="tabela-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th style="text-align:left">Mês</th>
+            <th>Est. inicial (R$)</th>
+            <th>Entradas (R$)</th>
+            <th>Consumo (R$)</th>
+            <th>Saldo final (R$)</th>
+            <th>Var. mês</th>
+          </tr>
+        </thead>
+        <tbody id="tbody"></tbody>
+        <tfoot>
+          <tr>
+            <td>Acumulado</td>
+            <td>—</td>
+            <td class="pos" id="f-ent"></td>
+            <td class="neg" id="f-con"></td>
+            <td id="f-sal"></td>
+            <td></td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+  </div>
+
+  <div class="rodape">
+    Equatorial Energia · Projeção gerada automaticamente via Python · Dados SAP
+  </div>
+</div>
+
+<script>
+function fmtMi(v){
+  return 'R$ ' + (v/1e6).toLocaleString('pt-BR',{minimumFractionDigits:1,maximumFractionDigits:1}) + ' Mi';
+}
+function fmtRS(v){
+  return v.toLocaleString('pt-BR',{style:'currency',currency:'BRL',minimumFractionDigits:0,maximumFractionDigits:0});
+}
+function varTag(sal, ini){
+  const d = sal - ini;
+  const pct = ini > 0 ? (d/ini*100) : 0;
+  const cls = d >= 0 ? 'var-pos' : 'var-neg';
+  const sinal = d >= 0 ? '+' : '';
+  return `<span class="${cls}">${sinal}${pct.toFixed(1)}%</span>`;
+}
+
+let chartObj = null;
+
+function renderizar(DATA) {
+  // Badge
+  const hoje = new Date();
+  document.getElementById('badge-data').textContent =
+    'Atualizado ' + hoje.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric'});
+
+  // Cards
+  const totalEnt = DATA.reduce((a,r)=>a+r.ent, 0);
+  const totalCon = DATA.reduce((a,r)=>a+r.con, 0);
+  const primeiro = DATA[0];
+  const ultimo   = DATA[DATA.length-1];
+
+  document.getElementById('c-ini').textContent     = fmtMi(primeiro.ini);
+  document.getElementById('c-ini-mes').textContent = `Saldo real — ${primeiro.mes}`;
+  document.getElementById('c-ent').textContent     = fmtMi(totalEnt);
+  document.getElementById('c-ent-per').textContent = `${primeiro.mes} → ${ultimo.mes}`;
+  document.getElementById('c-con').textContent     = fmtMi(totalCon);
+  document.getElementById('c-con-per').textContent = `${primeiro.mes} → ${ultimo.mes}`;
+  document.getElementById('c-sal').textContent     = fmtMi(ultimo.sal);
+  document.getElementById('c-sal-mes').textContent = `Resultado ${ultimo.mes}`;
+
+  // Tabela
+  document.getElementById('tbody').innerHTML = DATA.map(r=>`
+    <tr>
+      <td>${r.mes}</td>
+      <td>${fmtRS(r.ini)}</td>
+      <td class="pos">+${fmtRS(r.ent)}</td>
+      <td class="neg">-${fmtRS(r.con)}</td>
+      <td style="font-weight:500">${fmtRS(r.sal)}</td>
+      <td>${varTag(r.sal, r.ini)}</td>
+    </tr>
+  `).join('');
+
+  document.getElementById('f-ent').textContent = '+' + fmtRS(totalEnt);
+  document.getElementById('f-con').textContent = '-' + fmtRS(totalCon);
+  document.getElementById('f-sal').textContent = fmtRS(ultimo.sal);
+
+  // Gráfico
+  if(chartObj) chartObj.destroy();
+  chartObj = new Chart(document.getElementById('chart'), {
+    type: 'bar',
+    data: {
+      labels: DATA.map(r=>r.mes),
+      datasets: [
+        {
+          label: 'Saldo final (Mi)',
+          data: DATA.map(r=>parseFloat((r.sal/1e6).toFixed(1))),
+          backgroundColor: '#185FA5',
+          borderRadius: 5,
+          order: 2
+        },
+        {
+          label: 'Entradas (Mi)',
+          data: DATA.map(r=>parseFloat((r.ent/1e6).toFixed(1))),
+          type: 'line',
+          borderColor: '#1D9E75',
+          backgroundColor: 'transparent',
+          borderWidth: 2,
+          pointRadius: 4,
+          pointBackgroundColor: '#1D9E75',
+          tension: 0.35,
+          order: 1
+        },
+        {
+          label: 'Consumo (Mi)',
+          data: DATA.map(r=>parseFloat((r.con/1e6).toFixed(1))),
+          type: 'line',
+          borderColor: '#D85A30',
+          backgroundColor: 'transparent',
+          borderWidth: 2,
+          borderDash: [5,4],
+          pointRadius: 4,
+          pointBackgroundColor: '#D85A30',
+          tension: 0.35,
+          order: 1
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: '#0D2E5C',
+          titleFont: { family: 'IBM Plex Sans', size: 12 },
+          bodyFont:  { family: 'IBM Plex Mono', size: 11 },
+          callbacks: {
+            label: ctx => ' ' + ctx.dataset.label + ': R$ ' + ctx.parsed.y.toLocaleString('pt-BR') + ' Mi'
+          }
+        }
+      },
+      scales: {
+        x: {
+          ticks: { font:{family:'IBM Plex Sans',size:11}, color:'#5F5E5A', autoSkip:false, maxRotation:0 },
+          grid: { display: false }
+        },
+        y: {
+          ticks: { font:{family:'IBM Plex Mono',size:11}, color:'#5F5E5A', callback: v => 'R$ '+v+' Mi' },
+          grid: { color: 'rgba(136,135,128,0.12)' }
+        }
+      }
+    }
+  });
+
+  // Mostra app
+  document.getElementById('loading').style.display = 'none';
+  document.getElementById('app').style.display     = 'block';
+}
+
+// Carrega JSON
+fetch('projecao_2026.json')
+  .then(r => {
+    if(!r.ok) throw new Error('Arquivo não encontrado');
+    return r.json();
+  })
+  .then(data => {
+    // Traduz meses para pt-BR se necessário
+    const map = {
+      'MAY':'MAI','AUG':'AGO','SEP':'SET','OCT':'OUT','DEC':'DEZ'
+    };
+    const DATA = data.map(r => ({
+      ...r,
+      mes: r.mes.replace(/^([A-Z]+)/, m => map[m] || m)
+    }));
+    renderizar(DATA);
+  })
+  .catch(err => {
+    document.getElementById('loading').innerHTML =
+      `<span style="color:#D85A30">⚠️ Erro ao carregar projecao_2026.json<br><small>${err.message}</small></span>`;
+  });
+</script>
+</body>
+</html>
