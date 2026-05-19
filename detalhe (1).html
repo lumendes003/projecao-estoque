@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Detalhe por Material — EQTL 2026</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@300;400;500&display=swap');
+  :root {
+    --azul:#0D2E5C;--azul-mid:#185FA5;--verde:#1D9E75;--verde-bg:#E1F5EE;
+    --laranja:#D85A30;--laranja-bg:#FAECE7;--borda:#D3D1C7;
+    --bg:#F7F6F2;--branco:#FFFFFF;--texto:#2C2C2A;--texto2:#5F5E5A;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'IBM Plex Sans',sans-serif;background:var(--bg);color:var(--texto);padding:2rem}
+
+  /* LOADING */
+  #loading{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:60vh;gap:16px;color:var(--texto2);font-size:14px}
+  .spinner{width:32px;height:32px;border:3px solid var(--borda);border-top-color:var(--azul-mid);border-radius:50%;animation:spin 0.8s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  #app{display:none}
+
+  /* TOPO */
+  .topo{display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:1.25rem;padding-bottom:1rem;border-bottom:1px solid var(--borda);flex-wrap:wrap;gap:10px}
+  .topo h1{font-size:22px;font-weight:500;color:var(--azul);letter-spacing:-0.5px}
+  .topo p{font-size:13px;color:var(--texto2);margin-top:3px}
+  .topo-dir{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  .badge{font-family:'IBM Plex Mono',monospace;font-size:11px;background:var(--azul);color:#fff;padding:4px 12px;border-radius:20px}
+  .btn-voltar{font-size:12px;color:var(--azul-mid);text-decoration:none;border:1px solid var(--azul-mid);padding:5px 14px;border-radius:6px;white-space:nowrap}
+  .btn-voltar:hover{background:var(--azul-mid);color:#fff}
+
+  /* FILTROS */
+  .filtros{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:1.25rem;align-items:center}
+  .filtro-grupo{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+  .filtro-label{font-size:11px;font-weight:500;text-transform:uppercase;letter-spacing:.6px;color:var(--texto2)}
+  .emp-btn{font-family:'IBM Plex Mono',monospace;font-size:11px;padding:5px 14px;border:1px solid var(--borda);border-radius:20px;background:var(--branco);color:var(--texto2);cursor:pointer;transition:all .15s}
+  .emp-btn:hover{background:var(--bg)}
+  .emp-btn.ativo{background:var(--azul);color:#fff;border-color:var(--azul)}
+
+  /* BUSCA + INFO */
+  .barra-busca{display:flex;gap:12px;align-items:center;margin-bottom:1rem;flex-wrap:wrap}
+  .input-busca{font-family:'IBM Plex Sans',sans-serif;font-size:13px;padding:7px 14px;border:1px solid var(--borda);border-radius:8px;background:var(--branco);color:var(--texto);width:320px;outline:none}
+  .input-busca:focus{border-color:var(--azul-mid)}
+  .info-count{font-size:12px;color:var(--texto2);font-family:'IBM Plex Mono',monospace}
+
+  /* MODO VIEW */
+  .modo-tabs{display:flex;gap:0;border:1px solid var(--borda);border-radius:8px;overflow:hidden;background:var(--branco)}
+  .modo-tab{font-size:12px;padding:6px 16px;background:transparent;border:none;cursor:pointer;color:var(--texto2);font-family:'IBM Plex Sans',sans-serif;transition:all .15s}
+  .modo-tab.ativo{background:var(--azul);color:#fff}
+
+  /* TABELA PIVÔ (material × mês) */
+  .tabela-wrap{background:var(--branco);border:1px solid var(--borda);border-radius:10px;overflow:auto;margin-bottom:1.5rem;max-height:70vh}
+  table{width:100%;border-collapse:collapse;font-size:12px}
+  thead th{position:sticky;top:0;padding:9px 12px;text-align:right;font-size:10px;font-weight:500;text-transform:uppercase;letter-spacing:.6px;color:var(--texto2);background:#FAFAF8;border-bottom:1px solid var(--borda);white-space:nowrap;z-index:2}
+  thead th:first-child,thead th:nth-child(2){text-align:left;position:sticky;z-index:3}
+  thead th:first-child{left:0;min-width:80px}
+  thead th:nth-child(2){left:80px;min-width:280px;border-right:1px solid var(--borda)}
+  tbody tr:hover{background:#FAFAF8}
+  tbody td{padding:9px 12px;text-align:right;border-bottom:.5px solid var(--borda);font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--texto);white-space:nowrap}
+  tbody td:first-child{position:sticky;left:0;background:var(--branco);z-index:1;text-align:left;font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--texto2)}
+  tbody td:nth-child(2){position:sticky;left:80px;background:var(--branco);z-index:1;text-align:left;font-family:'IBM Plex Sans',sans-serif;font-size:12px;font-weight:500;color:var(--azul);border-right:1px solid var(--borda);max-width:280px;overflow:hidden;text-overflow:ellipsis}
+  tbody tr:hover td:first-child,tbody tr:hover td:nth-child(2){background:#FAFAF8}
+  tbody tr:last-child td{border-bottom:none}
+  tfoot td{position:sticky;bottom:0;padding:9px 12px;text-align:right;font-family:'IBM Plex Mono',monospace;font-size:11px;font-weight:500;background:#F0EFE9;border-top:1px solid var(--borda);color:var(--texto);white-space:nowrap;z-index:2}
+  tfoot td:first-child{position:sticky;left:0;bottom:0;z-index:3;text-align:left;font-family:'IBM Plex Sans',sans-serif;font-size:12px;color:var(--texto2)}
+  tfoot td:nth-child(2){position:sticky;left:80px;bottom:0;z-index:3;text-align:left;font-family:'IBM Plex Sans',sans-serif;font-size:12px;border-right:1px solid var(--borda)}
+
+  /* TABELA DETALHE (linhas por material+mês) */
+  .col-mes{color:var(--texto2)!important;font-size:10px!important}
+  .pos{color:var(--verde)!important}
+  .neg{color:var(--laranja)!important}
+  .zero{color:#BBB!important}
+
+  .rodape{margin-top:1.5rem;font-size:11px;color:var(--texto2);text-align:center;padding-top:1rem;border-top:1px solid var(--borda)}
+</style>
+</head>
+<body>
+<div id="loading"><div class="spinner"></div><span>Carregando materiais...</span></div>
+<div id="app">
+
+  <div class="topo">
+    <div>
+      <h1>Detalhe por Material · EQTL 2026</h1>
+      <p>Saldo final projetado (R$) · <span id="subtitulo">Todas as distribuidoras</span></p>
+    </div>
+    <div class="topo-dir">
+      <span class="badge" id="badge-data"></span>
+      <a class="btn-voltar" href="index.html">← Voltar ao resumo</a>
+    </div>
+  </div>
+
+  <!-- FILTRO EMPRESA -->
+  <div class="filtros">
+    <span class="filtro-label">Empresa:</span>
+    <div class="filtro-grupo" id="filtro-emp"></div>
+  </div>
+
+  <!-- BUSCA + MODO -->
+  <div class="barra-busca">
+    <input class="input-busca" id="busca" type="text" placeholder="Buscar por código ou descrição...">
+    <span class="info-count" id="info-count"></span>
+    <div class="modo-tabs">
+      <button class="modo-tab ativo" id="tab-pivot" onclick="setModo('pivot')">Saldo final/mês</button>
+      <button class="modo-tab" id="tab-detalhe" onclick="setModo('detalhe')">Detalhe completo</button>
+    </div>
+  </div>
+
+  <!-- TABELA -->
+  <div class="tabela-wrap" id="tabela-wrap"></div>
+
+  <div class="rodape">Equatorial Energia · Projeção gerada automaticamente via Python · Dados SAP</div>
+</div>
+
+<script>
+const MESES_ORD = ['MAI/26','JUN/26','JUL/26','AGO/26','SET/26','OUT/26','NOV/26','DEZ/26'];
+const EMPRESAS  = ['EQTL AL','EQTL AP','EQTL GO','EQTL MA','EQTL PA','EQTL PI','EQTL RS'];
+
+let DETALHE  = [];
+let empSel   = 'TODAS';
+let modoCurr = 'pivot';
+let buscaTxt = '';
+
+function fmtRS(v){
+  if(v === 0) return '—';
+  return v.toLocaleString('pt-BR',{style:'currency',currency:'BRL',minimumFractionDigits:0,maximumFractionDigits:0});
+}
+function fmtRSsinal(v){
+  if(v === 0) return '<span class="zero">—</span>';
+  const cls = v > 0 ? 'pos' : 'neg';
+  const s   = v > 0 ? '+' : '';
+  return `<span class="${cls}">${s}${v.toLocaleString('pt-BR',{style:'currency',currency:'BRL',minimumFractionDigits:0,maximumFractionDigits:0})}</span>`;
+}
+
+function dadosFiltrados(){
+  let d = DETALHE;
+  if(empSel !== 'TODAS') d = d.filter(r => r.empresa === empSel);
+  if(buscaTxt){
+    const q = buscaTxt.toLowerCase();
+    // pega chaves únicas que batem
+    const chavesBate = new Set(
+      d.filter(r => r.cod.toLowerCase().includes(q) || r.descricao.toLowerCase().includes(q))
+       .map(r => r.cod + '|' + r.empresa)
+    );
+    d = d.filter(r => chavesBate.has(r.cod + '|' + r.empresa));
+  }
+  return d;
+}
+
+// ── MODO PIVÔ: material × mês (saldo final) ──────────────────────────────────
+function renderPivot(dados){
+  // agrupa por chave
+  const map = {};
+  dados.forEach(r => {
+    const k = r.cod + '|' + r.empresa;
+    if(!map[k]) map[k] = {cod:r.cod, empresa:r.empresa, descricao:r.descricao, meses:{}};
+    map[k].meses[r.mes] = (map[k].meses[r.mes] || 0) + r.rs_final;
+  });
+  const materiais = Object.values(map);
+
+  // totais por mês
+  const totMes = {};
+  MESES_ORD.forEach(m => totMes[m] = 0);
+  materiais.forEach(mat => MESES_ORD.forEach(m => totMes[m] += (mat.meses[m] || 0)));
+
+  document.getElementById('info-count').textContent = `${materiais.length.toLocaleString('pt-BR')} materiais`;
+
+  const html = `<table>
+    <thead><tr>
+      <th style="text-align:left">Empresa</th>
+      <th style="text-align:left">Cód · Descrição</th>
+      ${MESES_ORD.map(m=>`<th>${m}</th>`).join('')}
+    </tr></thead>
+    <tbody>
+      ${materiais.map(mat=>`<tr>
+        <td>${mat.empresa}</td>
+        <td title="${mat.descricao}">${mat.cod} · ${mat.descricao || '—'}</td>
+        ${MESES_ORD.map(m=>{
+          const v = mat.meses[m] ?? null;
+          if(v === null) return `<td class="zero">—</td>`;
+          const cls = v < 0 ? 'neg' : '';
+          return `<td class="${cls}">${fmtRS(v)}</td>`;
+        }).join('')}
+      </tr>`).join('')}
+    </tbody>
+    <tfoot><tr>
+      <td></td><td>Total</td>
+      ${MESES_ORD.map(m=>`<td style="font-weight:600">${fmtRS(totMes[m])}</td>`).join('')}
+    </tr></tfoot>
+  </table>`;
+
+  document.getElementById('tabela-wrap').innerHTML = html;
+}
+
+// ── MODO DETALHE: todas as colunas por linha ──────────────────────────────────
+function renderDetalhe(dados){
+  const chaves = [...new Set(dados.map(r => r.cod + '|' + r.empresa))];
+  document.getElementById('info-count').textContent = `${chaves.length.toLocaleString('pt-BR')} materiais · ${dados.length.toLocaleString('pt-BR')} linhas`;
+
+  const html = `<table>
+    <thead><tr>
+      <th style="text-align:left">Empresa</th>
+      <th style="text-align:left">Cód · Descrição</th>
+      <th>Mês</th>
+      <th>Est.Ini (R$)</th>
+      <th>Entradas (R$)</th>
+      <th>Consumo (R$)</th>
+      <th>Saldo Final (R$)</th>
+      <th>Preço Médio</th>
+    </tr></thead>
+    <tbody>
+      ${dados.map(r=>`<tr>
+        <td>${r.empresa}</td>
+        <td title="${r.descricao}">${r.cod} · ${r.descricao || '—'}</td>
+        <td class="col-mes">${r.mes}</td>
+        <td>${fmtRS(r.rs_ini)}</td>
+        <td>${r.rs_entrada > 0 ? '<span class="pos">+'+fmtRS(r.rs_entrada)+'</span>' : '<span class="zero">—</span>'}</td>
+        <td>${r.rs_consumo > 0 ? '<span class="neg">-'+fmtRS(r.rs_consumo)+'</span>' : '<span class="zero">—</span>'}</td>
+        <td style="font-weight:500">${fmtRS(r.rs_final)}</td>
+        <td>${r.preco_medio > 0 ? r.preco_medio.toLocaleString('pt-BR',{style:'currency',currency:'BRL',minimumFractionDigits:2}) : '—'}</td>
+      </tr>`).join('')}
+    </tbody>
+  </table>`;
+
+  document.getElementById('tabela-wrap').innerHTML = html;
+}
+
+function renderizar(){
+  const dados = dadosFiltrados();
+  document.getElementById('subtitulo').textContent =
+    empSel === 'TODAS' ? 'Todas as distribuidoras' : empSel;
+  if(modoCurr === 'pivot') renderPivot(dados);
+  else renderDetalhe(dados);
+}
+
+function setModo(modo){
+  modoCurr = modo;
+  document.getElementById('tab-pivot').classList.toggle('ativo', modo === 'pivot');
+  document.getElementById('tab-detalhe').classList.toggle('ativo', modo === 'detalhe');
+  renderizar();
+}
+
+function montarFiltro(){
+  const wrap = document.getElementById('filtro-emp');
+  const todas = document.createElement('button');
+  todas.className = 'emp-btn ativo';
+  todas.textContent = 'Todas';
+  todas.onclick = () => selecionarEmp('TODAS', todas);
+  wrap.appendChild(todas);
+  EMPRESAS.forEach(emp => {
+    const b = document.createElement('button');
+    b.className = 'emp-btn';
+    b.textContent = emp;
+    b.onclick = () => selecionarEmp(emp, b);
+    wrap.appendChild(b);
+  });
+}
+
+function selecionarEmp(emp, btn){
+  empSel = emp;
+  document.querySelectorAll('.emp-btn').forEach(b => b.classList.remove('ativo'));
+  btn.classList.add('ativo');
+  renderizar();
+}
+
+document.getElementById('busca').addEventListener('input', e => {
+  buscaTxt = e.target.value.trim();
+  renderizar();
+});
+
+document.getElementById('badge-data').textContent =
+  'Atualizado ' + new Date().toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric'});
+
+fetch('detalhe_2026.json')
+  .then(r => { if(!r.ok) throw new Error('Arquivo não encontrado'); return r.json(); })
+  .then(dados => {
+    DETALHE = dados;
+    montarFiltro();
+    renderizar();
+    document.getElementById('loading').style.display = 'none';
+    document.getElementById('app').style.display = 'block';
+  })
+  .catch(err => {
+    document.getElementById('loading').innerHTML =
+      `<span style="color:#D85A30">⚠️ Erro ao carregar detalhe_2026.json<br><small>${err.message}</small></span>`;
+  });
+</script>
+</body>
+</html>
