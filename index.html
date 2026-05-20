@@ -233,7 +233,7 @@ function renderizar(){
     data:{
       labels: resumo.map(r=>r.mes),
       datasets:[
-        {label:'Saldo final (Mi)',data:resumo.map(r=>parseFloat((r.sal/1e6).toFixed(1))),backgroundColor:'#185FA5',borderRadius:5,order:2},
+        {label:'Saldo final (Mi)', data: resumo.map(r=>parseFloat((r.ini/1e6).toFixed(1))), backgroundColor:'#185FA5', borderRadius:5, order:2},
         {label:'Entradas (Mi)',data:resumo.map(r=>parseFloat((r.ent/1e6).toFixed(1))),type:'line',borderColor:'#1D9E75',backgroundColor:'transparent',borderWidth:2,pointRadius:4,pointBackgroundColor:'#1D9E75',tension:.35,order:1},
         {label:'Consumo (Mi)',data:resumo.map(r=>parseFloat((r.con/1e6).toFixed(1))),type:'line',borderColor:'#D85A30',backgroundColor:'transparent',borderWidth:2,borderDash:[5,4],pointRadius:4,pointBackgroundColor:'#D85A30',tension:.35,order:1}
       ]
