@@ -273,18 +273,29 @@ def projetar(df_est, df_entradas, df_consumo, meta_classe, df_ped_pm, pu_plano):
 # ─────────────────────────────────────────────
 def resumo_mensal(df_proj):
     r = df_proj.groupby('mes', sort=False).agg(
-        **{'Estoque inicial (R$)': ('rs_ini',     'sum'),
-           'Entradas (R$)':        ('rs_entrada', 'sum'),
-           'Consumo (R$)':         ('rs_consumo', 'sum'),
-           'Saldo final (R$)':     ('rs_final',   'sum')}
+        **{'Entradas (R$)':    ('rs_entrada', 'sum'),
+           'Consumo (R$)':     ('rs_consumo', 'sum')}
     ).reset_index()
 
     ordem = [mes_ptbr(m) for m in MESES]
     r['_ord'] = r['mes'].map({m: i for i, m in enumerate(ordem)})
     r = r.sort_values('_ord').drop(columns='_ord')
     r.rename(columns={'mes': 'Mês'}, inplace=True)
-    return r
 
+    # Calcula ini e sal encadeados
+    ini_inicial = df_proj[df_proj['mes'] == ordem[0]]['rs_ini'].sum()
+    inis, sals = [], []
+    saldo = ini_inicial
+    for _, row in r.iterrows():
+        inis.append(round(saldo, 2))
+        saldo = saldo + row['Entradas (R$)'] - row['Consumo (R$)']
+        saldo = max(saldo, 0)  # não deixa negativo
+        sals.append(round(saldo, 2))
+
+    r.insert(1, 'Estoque inicial (R$)', inis)
+    r['Saldo final (R$)'] = sals
+
+    return r
 
 # ─────────────────────────────────────────────
 # EXPORTAÇÃO
