@@ -172,9 +172,14 @@ function agregaPorMes(dados){
     mapa[r.mes].con += r.rs_consumo;
     mapa[r.mes].sal += r.rs_final;
   });
-  // Para ini: usa só o primeiro mês de cada material (evita duplicar)
-  // Recalcula ini corretamente: saldo do mês anterior
+
   const rows = MESES_ORD.map(m => mapa[m]);
+
+  // Propaga saldo final do mês anterior como estoque inicial do próximo
+  for(let i = 1; i < rows.length; i++){
+    rows[i].ini = rows[i-1].sal;
+  }
+
   return rows;
 }
 
