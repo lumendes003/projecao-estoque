@@ -262,7 +262,8 @@ def projetar(df_est, df_entradas, df_consumo, meta_classe, df_ped_pm, pu_plano):
                 'rs_final':    round(rs_final, 2),
             })
 
-            qtd, rs = qtd_final, rs_final
+            qtd_final = max(qtd_disp - qtd_con, 0.0)
+            rs_final  = max(rs_disp  - rs_con,  0.0)
 
     return pd.DataFrame(linhas)
 
