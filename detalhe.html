@@ -477,7 +477,7 @@ function inicializar(dados){
   document.getElementById('app').style.display = 'block';
 }
 
-fetch('detalhe_2026_v2.json')
+fetch('detalhe_2026.json')
   .then(r => { if(!r.ok) throw new Error('Arquivo não encontrado'); return r.json(); })
   .then(dados => inicializar(dados))
   .catch(err => {
