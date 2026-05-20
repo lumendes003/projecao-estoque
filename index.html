@@ -167,14 +167,24 @@ function agregaPorMes(dados){
   MESES_ORD.forEach(m => mapa[m]={mes:m,ini:0,ent:0,con:0,sal:0});
   dados.forEach(r => {
     if(!mapa[r.mes]) return;
-    mapa[r.mes].ini += r.rs_ini;
     mapa[r.mes].ent += r.rs_entrada;
     mapa[r.mes].con += r.rs_consumo;
-    mapa[r.mes].sal += r.rs_final;
   });
-  // Para ini: usa só o primeiro mês de cada material (evita duplicar)
-  // Recalcula ini corretamente: saldo do mês anterior
+
+  // Pega o ini do primeiro mês somando rs_ini dos materiais
+  const iniPrimeiro = dados
+    .filter(r => r.mes === MESES_ORD[0])
+    .reduce((a, r) => a + r.rs_ini, 0);
+
+  // Encadeia saldo mês a mês
   const rows = MESES_ORD.map(m => mapa[m]);
+  let saldo = iniPrimeiro;
+  rows.forEach(r => {
+    r.ini = saldo;
+    r.sal = Math.max(saldo + r.ent - r.con, 0);
+    saldo = r.sal;
+  });
+
   return rows;
 }
 
