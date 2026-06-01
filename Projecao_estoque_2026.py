@@ -23,10 +23,10 @@ warnings.filterwarnings('ignore')
 # ─────────────────────────────────────────────
 MES_INICIO  = '2026-05-01'   # ← atualizar mensalmente
 
-PASTA_BASE  = Path(r'C:/Users/u10952/COBERTURA_BI/PROJEÇÃO_ESTOQUE')
+PASTA_BASE  = Path(r'\\10.7.1.90\Expansao_At_Automacao\9. EXEC_CONTROLE OBRAS AT\BASES\PROJEÇÃO_ESTOQUE')
 ARQ_ENTRADA = PASTA_BASE / 'entrada.xlsx'
-ARQ_PLANO   = Path(r'\\10.7.1.90\Expansao_At_Automacao\9. EXEC_CONTROLE OBRAS AT\BASES\PLANO IRRESTRITO VERSÃO ATUAL BI.xlsm')
-ARQ_SAIDA   = Path(r'\\10.7.1.90\Expansao_At_Automacao\9. EXEC_CONTROLE OBRAS AT\BASES\PROJECAO_ESTOQUE_FINANCEIRO_2026.xlsx')
+ARQ_PLANO   = Path(r'\\10.7.1.90\Expansao_At_Automacao\9. EXEC_CONTROLE OBRAS AT\BASES\PROJEÇÃO_ESTOQUE\PLANO IRRESTRITO VERSÃO ATUAL BI.xlsm')
+ARQ_SAIDA   = Path(r'\\10.7.1.90\Expansao_At_Automacao\9. EXEC_CONTROLE OBRAS AT\BASES\PROJEÇÃO_ESTOQUE\PROJECAO_ESTOQUE_FINANCEIRO_2026.xlsx')
 
 ABA_ESTOQUE = 'Estoque'
 ABA_PEDIDOS = 'PEDIDOS'
