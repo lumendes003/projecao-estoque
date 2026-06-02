@@ -19,20 +19,17 @@
   @keyframes spin{to{transform:rotate(360deg)}}
   #app{display:none}
 
-  /* TOPO */
   .topo{display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:1.25rem;padding-bottom:1rem;border-bottom:1px solid var(--borda);flex-wrap:wrap;gap:10px}
   .topo h1{font-size:22px;font-weight:500;color:var(--azul);letter-spacing:-0.5px}
   .topo p{font-size:13px;color:var(--texto2);margin-top:3px}
   .topo-dir{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
   .badge{font-family:'IBM Plex Mono',monospace;font-size:11px;background:var(--azul);color:#fff;padding:4px 12px;border-radius:20px}
 
-  /* FILTRO DISTRIBUIDORA */
   .filtro-emp{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:1.25rem}
   .emp-btn{font-family:'IBM Plex Mono',monospace;font-size:11px;padding:5px 14px;border:1px solid var(--borda);border-radius:20px;background:var(--branco);color:var(--texto2);cursor:pointer;transition:all .15s}
   .emp-btn:hover{background:var(--bg)}
   .emp-btn.ativo{background:var(--azul);color:#fff;border-color:var(--azul)}
 
-  /* CARDS */
   .cards{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:1.5rem}
   @media(max-width:700px){.cards{grid-template-columns:repeat(2,1fr)}}
   .card{background:var(--branco);border:1px solid var(--borda);border-radius:10px;padding:1rem 1.25rem;position:relative;overflow:hidden}
@@ -48,7 +45,6 @@
   .card.destaque .card-valor{color:var(--azul)}
   .card-sub{font-size:11px;color:var(--texto2);margin-top:6px}
 
-  /* GRÁFICOS */
   .grafico-wrap{background:var(--branco);border:1px solid var(--borda);border-radius:10px;padding:1.25rem 1.5rem;margin-bottom:1.5rem}
   .grafico-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;flex-wrap:wrap;gap:8px}
   .grafico-titulo{font-size:13px;font-weight:500;color:var(--texto)}
@@ -57,7 +53,6 @@
   .leg-sq{width:10px;height:10px;border-radius:2px;flex-shrink:0}
   .canvas-container{position:relative;height:280px}
 
-  /* TABELA */
   .tabela-wrap{background:var(--branco);border:1px solid var(--borda);border-radius:10px;overflow:hidden;margin-bottom:1.5rem}
   .tabela-header{padding:1rem 1.5rem;border-bottom:1px solid var(--borda);font-size:13px;font-weight:500;color:var(--texto);display:flex;align-items:center}
   table{width:100%;border-collapse:collapse;font-size:13px}
@@ -76,6 +71,7 @@
   a.link-detalhe{display:inline-block;font-size:12px;color:var(--azul-mid);text-decoration:none;border:1px solid var(--azul-mid);padding:5px 14px;border-radius:6px;margin-left:auto}
   a.link-detalhe:hover{background:var(--azul-mid);color:#fff}
   .rodape{margin-top:1.5rem;font-size:11px;color:var(--texto2);text-align:center;padding-top:1rem;border-top:1px solid var(--borda)}
+  .aviso-empresa{font-size:12px;color:var(--texto2);font-style:italic;margin-bottom:0.5rem;display:none}
 </style>
 </head>
 <body>
@@ -85,17 +81,16 @@
   <div class="topo">
     <div>
       <h1>Projeção de Estoque · EQTL 2026</h1>
-      <p>Preço médio ponderado · <span id="subtitulo">Todas as distribuidoras</span></p>
+      <p>Quantidade × PU · <span id="subtitulo">Todas as distribuidoras</span></p>
     </div>
     <div class="topo-dir">
       <span class="badge" id="badge-data"></span>
     </div>
   </div>
 
-  <!-- FILTRO DISTRIBUIDORA -->
   <div class="filtro-emp" id="filtro-emp"></div>
+  <div class="aviso-empresa" id="aviso-empresa">⚠️ Filtro por empresa disponível apenas no detalhe por material</div>
 
-  <!-- CARDS -->
   <div class="cards">
     <div class="card azul"><div class="card-label">Estoque inicial</div><div class="card-valor" id="c-ini"></div><div class="card-sub" id="c-ini-mes"></div></div>
     <div class="card verde"><div class="card-label">Total entradas</div><div class="card-valor" id="c-ent"></div><div class="card-sub" id="c-ent-per"></div></div>
@@ -103,22 +98,20 @@
     <div class="card destaque"><div class="card-label">Saldo projetado</div><div class="card-valor" id="c-sal"></div><div class="card-sub" id="c-sal-mes"></div></div>
   </div>
 
-  <!-- GRÁFICO PRINCIPAL -->
   <div class="grafico-wrap">
     <div class="grafico-header">
       <span class="grafico-titulo">Evolução mensal do estoque (R$ Mi)</span>
       <div class="legenda">
-        <span><span class="leg-sq" style="background:#185FA5"></span>Saldo final</span>
+        <span><span class="leg-sq" style="background:#185FA5"></span>Estoque inicial</span>
         <span><span class="leg-sq" style="background:#1D9E75"></span>Entradas</span>
         <span><span class="leg-sq" style="background:#D85A30;opacity:.8"></span>Consumo</span>
       </div>
     </div>
     <div class="canvas-container">
-      <canvas id="chart" role="img" aria-label="Evolução mensal do estoque EQTL 2026">Saldo projetado EQTL 2026.</canvas>
+      <canvas id="chart"></canvas>
     </div>
   </div>
 
-  <!-- TABELA MENSAL -->
   <div class="tabela-wrap">
     <div class="tabela-header">
       <span>Detalhe mensal</span>
@@ -148,9 +141,9 @@
 
 <script>
 const EMPRESAS = ['EQTL AL','EQTL AP','EQTL GO','EQTL MA','EQTL PA','EQTL PI','EQTL RS'];
-const MESES_ORD = ['MAI/26','JUN/26','JUL/26','AGO/26','SET/26','OUT/26','NOV/26','DEZ/26'];
 
-let DETALHE = [];
+let RESUMO  = [];  // projecao_2026.json — resumo consolidado
+let DETALHE = [];  // detalhe_2026.json  — por material (para filtro empresa)
 let empSel  = 'TODAS';
 let chartObj = null;
 
@@ -162,27 +155,41 @@ function varTag(sal,ini){
   return `<span class="${cls}">${sinal}${pct.toFixed(1)}%</span>`;
 }
 
-function agregaPorMes(dados){
+// Quando "Todas" → usa RESUMO diretamente (valores Python corretos)
+// Quando empresa selecionada → recalcula a partir do DETALHE filtrado
+function calcularResumo(){
+  if(empSel === 'TODAS'){
+    return RESUMO.map(r => ({
+      mes: r.mes,
+      ini: r.ini,
+      ent: r.ent,
+      con: r.con,
+      sal: r.sal
+    }));
+  }
+
+  // Filtro por empresa: agrega do detalhe e encadeia
+  const MESES_ORD = RESUMO.map(r => r.mes);
   const mapa = {};
-  MESES_ORD.forEach(m => mapa[m]={mes:m,ini:0,ent:0,con:0,sal:0});
-  dados.forEach(r => {
+  MESES_ORD.forEach(m => mapa[m] = {mes:m, ini:0, ent:0, con:0, sal:0});
+
+  const filtrado = DETALHE.filter(r => r.empresa === empSel);
+  filtrado.forEach(r => {
     if(!mapa[r.mes]) return;
     mapa[r.mes].ent += r.rs_entrada;
     mapa[r.mes].con += r.rs_consumo;
     mapa[r.mes].sal += r.rs_final;
   });
 
-  // ini do primeiro mês = soma rs_ini
-  const iniPrimeiro = dados
+  // ini do primeiro mês
+  const iniPrimeiro = filtrado
     .filter(r => r.mes === MESES_ORD[0])
     .reduce((a, r) => a + r.rs_ini, 0);
 
-  // Encadeia ini mês a mês
   const rows = MESES_ORD.map(m => mapa[m]);
   let saldo = iniPrimeiro;
   rows.forEach(r => {
     r.ini = saldo;
-    r.sal = r.sal; // já calculado
     saldo = r.sal;
   });
 
@@ -190,20 +197,16 @@ function agregaPorMes(dados){
 }
 
 function renderizar(){
-  const filtrado = empSel === 'TODAS'
-    ? DETALHE
-    : DETALHE.filter(r => r.empresa === empSel);
-
-  // Subtítulo
-  document.getElementById('subtitulo').textContent =
-    empSel === 'TODAS' ? 'Todas as distribuidoras' : empSel;
-
-  const resumo = agregaPorMes(filtrado);
+  const resumo = calcularResumo();
   const p = resumo[0], u = resumo[resumo.length-1];
   const totalEnt = resumo.reduce((a,r)=>a+r.ent,0);
   const totalCon = resumo.reduce((a,r)=>a+r.con,0);
 
-  // Cards
+  document.getElementById('subtitulo').textContent =
+    empSel === 'TODAS' ? 'Todas as distribuidoras' : empSel;
+  document.getElementById('aviso-empresa').style.display =
+    empSel !== 'TODAS' ? 'block' : 'none';
+
   document.getElementById('c-ini').textContent     = fmtMi(p.ini);
   document.getElementById('c-ini-mes').textContent = `Saldo real — ${p.mes}`;
   document.getElementById('c-ent').textContent     = fmtMi(totalEnt);
@@ -213,7 +216,6 @@ function renderizar(){
   document.getElementById('c-sal').textContent     = fmtMi(u.sal);
   document.getElementById('c-sal-mes').textContent = `Resultado ${u.mes}`;
 
-  // Tabela
   document.getElementById('tbody').innerHTML = resumo.map(r=>`
     <tr>
       <td>${r.mes}</td>
@@ -223,18 +225,18 @@ function renderizar(){
       <td style="font-weight:500">${fmtRS(r.sal)}</td>
       <td>${varTag(r.sal,r.ini)}</td>
     </tr>`).join('');
+
   document.getElementById('f-ent').textContent = '+'+fmtRS(totalEnt);
   document.getElementById('f-con').textContent = '-'+fmtRS(totalCon);
   document.getElementById('f-sal').textContent = fmtRS(u.sal);
 
-  // Gráfico
   if(chartObj) chartObj.destroy();
   chartObj = new Chart(document.getElementById('chart'),{
     type:'bar',
     data:{
       labels: resumo.map(r=>r.mes),
       datasets:[
-        {label:'Saldo final (Mi)', data: resumo.map(r=>parseFloat((r.ini/1e6).toFixed(1))), backgroundColor:'#185FA5', borderRadius:5, order:2},
+        {label:'Estoque inicial (Mi)',data:resumo.map(r=>parseFloat((r.ini/1e6).toFixed(1))),backgroundColor:'#185FA5',borderRadius:5,order:2},
         {label:'Entradas (Mi)',data:resumo.map(r=>parseFloat((r.ent/1e6).toFixed(1))),type:'line',borderColor:'#1D9E75',backgroundColor:'transparent',borderWidth:2,pointRadius:4,pointBackgroundColor:'#1D9E75',tension:.35,order:1},
         {label:'Consumo (Mi)',data:resumo.map(r=>parseFloat((r.con/1e6).toFixed(1))),type:'line',borderColor:'#D85A30',backgroundColor:'transparent',borderWidth:2,borderDash:[5,4],pointRadius:4,pointBackgroundColor:'#D85A30',tension:.35,order:1}
       ]
@@ -274,25 +276,25 @@ function selecionarEmp(emp, btn){
   renderizar();
 }
 
-// Badge data
 const hoje = new Date();
 document.getElementById('badge-data').textContent =
   'Atualizado '+hoje.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric'});
 
-// Carrega só o detalhe (tem tudo que precisa)
-fetch('detalhe_2026.json')
-  .then(r=>{ if(!r.ok) throw new Error('Arquivo não encontrado'); return r.json(); })
-  .then(dados=>{
-    DETALHE = dados;
-    montarFiltro();
-    renderizar();
-    document.getElementById('loading').style.display='none';
-    document.getElementById('app').style.display='block';
-  })
-  .catch(err=>{
-    document.getElementById('loading').innerHTML=
-      `<span style="color:#D85A30">⚠️ Erro ao carregar detalhe_2026.json<br><small>${err.message}</small></span>`;
-  });
+// Carrega os dois JSONs em paralelo
+Promise.all([
+  fetch('projecao_2026.json').then(r=>{ if(!r.ok) throw new Error('projecao_2026.json não encontrado'); return r.json(); }),
+  fetch('detalhe_2026.json').then(r=>{ if(!r.ok) throw new Error('detalhe_2026.json não encontrado'); return r.json(); })
+]).then(([resumo, detalhe]) => {
+  RESUMO  = resumo;
+  DETALHE = detalhe;
+  montarFiltro();
+  renderizar();
+  document.getElementById('loading').style.display='none';
+  document.getElementById('app').style.display='block';
+}).catch(err => {
+  document.getElementById('loading').innerHTML =
+    `<span style="color:#D85A30">⚠️ Erro ao carregar dados<br><small>${err.message}</small></span>`;
+});
 </script>
 </body>
 </html>
