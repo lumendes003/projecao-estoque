@@ -20,12 +20,12 @@ warnings.filterwarnings('ignore')
 # ─────────────────────────────────────────────
 # CONFIGURAÇÃO
 # ─────────────────────────────────────────────
-MES_INICIO  = '2026-05-01'   # ← atualizar mensalmente
+MES_INICIO  = '2026-08-01'   # ← atualizar mensalmente
 
 PASTA_BASE  = Path(r'\\10.7.1.90\Expansao_At_Automacao\9. EXEC_CONTROLE OBRAS AT\BASES\PROJEÇÃO_ESTOQUE')
-ARQ_ENTRADA = PASTA_BASE / 'entrada.xlsx'
-ARQ_PLANO   = PASTA_BASE / 'PLANO IRRESTRITO VERSÃO ATUAL BI.xlsm'
-ARQ_SAIDA   = PASTA_BASE / 'PROJECAO_ESTOQUE_FINANCEIRO_2026.xlsx'
+ARQ_ENTRADA = PASTA_BASE / 'TESTE_SANIDADE.xlsx'
+ARQ_PLANO   = PASTA_BASE / 'PLANO IRRESTRITO VERSÃO ATUAL BI.xlsx'
+ARQ_SAIDA   = PASTA_BASE / 'PROJECAO_ESTOQUE_FINANCEIRO_2026_AGO.xlsx'
 
 ABA_ESTOQUE = 'Estoque'
 ABA_PEDIDOS = 'PEDIDOS'
@@ -68,9 +68,10 @@ def ler_bases():
 
     # ── TABELA PU ────────────────────────────
     df_pu = pd.read_excel(ARQ_ENTRADA, sheet_name=ABA_PU, header=0)
-    df_pu['chave_raw'] = df_pu['chave'].astype(str).str.strip()
-    df_pu['chave_pu']  = df_pu['chave_raw'].str[-9:] + '|' + df_pu['chave_raw'].str[:-9].str.strip()
-    df_pu['Unit_num']  = pd.to_numeric(df_pu['Unit.'], errors='coerce').fillna(0)
+    df_pu['COD_str']  = df_pu['COD'].astype(str).str.strip()
+    cod_to_empresa    = df_est.set_index('cod')['empresa'].to_dict()
+    df_pu['chave_pu'] = df_pu['COD_str'] + '|' + df_pu['COD_str'].map(cod_to_empresa).fillna('')
+    df_pu['Unit_num'] = pd.to_numeric(df_pu['Unit.'], errors='coerce').fillna(0)
     pu_dict = df_pu.set_index('chave_pu')['Unit_num'].to_dict()
     print(f"  ✅ Tabela PU: {len(pu_dict)} preços carregados")
 
