@@ -10,17 +10,18 @@ import json
 import warnings
 warnings.filterwarnings('ignore')
 
-MES_INICIO  = '2026-05-01'
+MES_INICIO  = '2026-08-01'
 
 PASTA_BASE  = Path(r'\\10.7.1.90\Expansao_At_Automacao\9. EXEC_CONTROLE OBRAS AT\BASES\PROJEÇÃO_ESTOQUE')
+ARQ_PLANO   = Path(r'\\10.7.1.90\Expansao_At_Automacao\5.EXEC_GESTÃO DE PROJETOS_AT\5 - Aquisição de Materiais\3 - Solicitações de Compra\3 Compra Prévia\ATUAL BI\COBERTURA POR OBRAS\BASE ENTRADA COBERTURA OBRAS.xlsm')
 ARQ_ENTRADA = PASTA_BASE / 'entrada.xlsx'
-ARQ_PLANO   = PASTA_BASE / 'PLANO IRRESTRITO VERSÃO ATUAL BI.xlsm'
-ARQ_SAIDA   = PASTA_BASE / 'PROJECAO_ESTOQUE_FINANCEIRO_2026_D.xlsx'
 
 ABA_ESTOQUE = 'Estoque'
 ABA_PEDIDOS = 'DILIGENCIAMENTO'
-ABA_PLANO   = 'LISTA + RESERVAS'
-ABA_PU      = 'PU'
+ABA_PLANO   = 'PLANO 2025'
+ABA_PU      = 'PLANO 2025'
+
+ARQ_SAIDA   = PASTA_BASE / 'PROJECAO_ESTOQUE_FINANCEIRO_2026_D.xlsx'
 
 SUBCLASSES_EXCLUIR = ['TORRE METÁLICA', 'TRANSFORMADOR DE FORÇA', 'MÓDULO GIS', 'REGULADOR DE TENSÃO']
 CLASSES_EXCLUIR    = ['PRÉ-MOLDADO', 'TRANSFORMADOR DE FORÇA']
@@ -53,10 +54,10 @@ def ler_bases():
     print(f"  ✅ Estoque: {len(df_est)} materiais — R$ {df_est['Valor_estoque'].sum():,.0f}")
 
     # ── TABELA PU ────────────────────────────
-    df_pu = pd.read_excel(ARQ_ENTRADA, sheet_name=ABA_PU, header=0)
-    df_pu['chave_raw'] = df_pu['chave'].astype(str).str.strip()
-    df_pu['chave_pu']  = df_pu['chave_raw'].str[-9:] + '|' + df_pu['chave_raw'].str[:-9].str.strip()
-    df_pu['Unit_num']  = pd.to_numeric(df_pu['Unit.'], errors='coerce').fillna(0)
+    df_pu = pd.read_excel(ARQ_PLANO, sheet_name=ABA_PU, header=2)
+    df_pu['COD_str']  = df_pu['COD SAP'].astype(str).str.strip()
+    df_pu['chave_pu'] = df_pu['COD_str'] + '|' + df_pu['EMPRESA'].astype(str).str.strip()
+    df_pu['Unit_num'] = pd.to_numeric(df_pu['PU'], errors='coerce').fillna(0)
     pu_dict = df_pu.set_index('chave_pu')['Unit_num'].to_dict()
     print(f"  ✅ Tabela PU: {len(pu_dict)} preços carregados")
 
@@ -87,16 +88,19 @@ def ler_bases():
     print(f"  ✅ Diligenciamento: {len(entradas)} entradas mensais — R$ {df_ped['Val_pedido'].sum():,.0f}")
 
     # ── PLANO IRRESTRITO ──────────────────────
-    df_plano = pd.read_excel(ARQ_PLANO, sheet_name=ABA_PLANO, header=0, engine='openpyxl')
-    df_plano['chave']            = df_plano['COD SAP'].astype(str).str.strip() + '|' + df_plano['EMPRESA'].astype(str).str.strip()
+    df_plano = pd.read_excel(ARQ_PLANO, sheet_name=ABA_PLANO, header=2, engine='openpyxl')
+    df_plano['chave'] = df_plano['COD SAP'].astype(str).str.strip() + '|' + df_plano['EMPRESA'].astype(str).str.strip()
     df_plano['DATA NECESSIDADE'] = pd.to_datetime(df_plano['DATA NECESSIDADE'], errors='coerce')
     df_plano['Mes_consumo']      = df_plano['DATA NECESSIDADE'].dt.to_period('M').dt.to_timestamp()
     df_plano['QTD ITEM']         = pd.to_numeric(df_plano['QTD ITEM'], errors='coerce').fillna(0)
-
-    df_plano = df_plano[~df_plano['CLASSE MATERIAL'].astype(str).str.strip().isin(CLASSES_EXCLUIR)].copy()
-    df_plano = df_plano[~df_plano['SUBCLASSE MATERIAL'].astype(str).str.strip().isin(SUBCLASSES_EXCLUIR)].copy()
-    df_plano = df_plano[~df_plano['BLQ?'].astype(str).str.upper().str.strip().isin(['SIM', 'BLOQUEADO'])].copy()
-
+    
+    if 'CLASSE MATERIAL' in df_plano.columns:
+            df_plano = df_plano[~df_plano['CLASSE MATERIAL'].astype(str).str.strip().isin(CLASSES_EXCLUIR)].copy()
+    if 'SUBCLASSE MATERIAL' in df_plano.columns:
+            df_plano = df_plano[~df_plano['SUBCLASSE MATERIAL'].astype(str).str.strip().isin(SUBCLASSES_EXCLUIR)].copy()
+    if 'BLQ?' in df_plano.columns:
+            df_plano = df_plano[~df_plano['BLQ?'].astype(str).str.upper().str.strip().isin(['SIM', 'BLOQUEADO'])].copy()
+    
     meta_classe = df_plano.groupby('chave', as_index=False).agg(
         classe=('CLASSE MATERIAL','first'), subclasse=('SUBCLASSE MATERIAL','first')
     )
@@ -120,6 +124,7 @@ def projetar(df_est, entradas, consumo, meta_classe, pu_dict):
     print("\n⚙️  Calculando projeção...")
 
     saldo_qtd = df_est.set_index('chave')['Qtd_estoque'].to_dict()
+    saldo_val = df_est.set_index('chave')['Valor_estoque'].to_dict()
     meta_cod  = df_est.set_index('chave')['cod'].to_dict()
     meta_emp  = df_est.set_index('chave')['empresa'].to_dict()
     meta_desc = df_est.set_index('chave')['descricao'].to_dict()
@@ -150,7 +155,7 @@ def projetar(df_est, entradas, consumo, meta_classe, pu_dict):
         qtd = float(saldo_qtd.get(chave, 0.0))
         pu  = pu_dict.get(chave, 0.0)
 
-        for mes in MESES:
+        for i, mes in enumerate(MESES):
             try:
                 e = ent_idx.loc[(chave, mes)]
                 qtd_ent = float(e['Qtd_entrada']) if isinstance(e, pd.Series) else float(e['Qtd_entrada'].sum())
@@ -166,20 +171,33 @@ def projetar(df_est, entradas, consumo, meta_classe, pu_dict):
 
             qtd_disp  = qtd + qtd_ent
             qtd_final = qtd_disp - qtd_con
+            if i == 0:
+                rs_ini = float(saldo_val.get(chave, 0.0))   # ← usa valor real no 1º mês
+            else:
+                rs_ini = max(qtd, 0.0) * pu
 
-            rs_ini   = max(qtd, 0.0)       * pu
+            
             rs_con   = max(qtd_con, 0.0)   * pu
             rs_final = max(qtd_final, 0.0) * pu
 
             linhas.append({
-                'cod': meta_cod.get(chave,''), 'empresa': meta_emp.get(chave,''),
-                'descricao': meta_desc.get(chave,''), 'classe': meta_cls.get(chave,''),
-                'subclasse': meta_sub.get(chave,''), 'mes': mes_ptbr(mes), 'pu': round(pu,4),
-                'qtd_ini': round(qtd,2), 'rs_ini': round(rs_ini,2),
-                'qtd_entrada': round(qtd_ent,2), 'rs_entrada': round(rs_ent,2),
-                'qtd_consumo': round(qtd_con,2), 'rs_consumo': round(rs_con,2),
-                'qtd_final': round(qtd_final,2), 'rs_final': round(rs_final,2),
+                'cod':         meta_cod.get(chave, ''),
+                'empresa':     meta_emp.get(chave, ''),
+                'descricao':   meta_desc.get(chave, ''),
+                'classe':      meta_cls.get(chave, ''),
+                'subclasse':   meta_sub.get(chave, ''),
+                'mes':         mes_ptbr(mes),
+                'pu':          round(pu, 4),
+                'qtd_ini':     round(qtd, 2),
+                'rs_ini':      round(rs_ini, 2),
+                'qtd_entrada': round(qtd_ent, 2),
+                'rs_entrada':  round(rs_ent, 2),
+                'qtd_consumo': round(qtd_con, 2),
+                'rs_consumo':  round(rs_con, 2),
+                'qtd_final':   round(qtd_final, 2),
+                'rs_final':    round(rs_final, 2),
             })
+
             qtd = qtd_final
 
     return pd.DataFrame(linhas)

@@ -69,12 +69,29 @@ def ler_bases():
     print(f"  ✅ Estoque: {len(df_est)} materiais — R$ {df_est['Valor_estoque'].sum():,.0f}")
 
     # ── TABELA PU ────────────────────────────
+    # ── TABELA PU ────────────────────────────
     df_pu = pd.read_excel(ARQ_PLANO, sheet_name=ABA_PU, header=2)
+    df_pu.columns = df_pu.columns.str.strip()
     df_pu['COD_str']  = df_pu['COD SAP'].astype(str).str.strip()
     df_pu['chave_pu'] = df_pu['COD_str'] + '|' + df_pu['EMPRESA'].astype(str).str.strip()
     df_pu['Unit_num'] = pd.to_numeric(df_pu['PU'], errors='coerce').fillna(0)
     pu_dict = df_pu.set_index('chave_pu')['Unit_num'].to_dict()
     print(f"  ✅ Tabela PU: {len(pu_dict)} preços carregados")
+
+    # ── PU EFETIVO (fallback: usa Valor/Qtd do próprio estoque quando falta PU) ──
+    chaves_est   = set(df_est['chave'])
+    chaves_pu    = set(pu_dict.keys())
+    sem_pu       = chaves_est - chaves_pu
+    valor_sem_pu = df_est[df_est['chave'].isin(sem_pu)]['Valor_estoque'].sum()
+    print(f"  ⚠️  Materiais em estoque sem PU na tabela: {len(sem_pu)} — R$ {valor_sem_pu:,.0f}")
+
+    pu_dict_efetivo = dict(pu_dict)
+    completados = 0
+    for _, row in df_est.iterrows():
+        if row['chave'] not in pu_dict_efetivo and row['Qtd_estoque'] > 0:
+            pu_dict_efetivo[row['chave']] = row['Valor_estoque'] / row['Qtd_estoque']
+            completados += 1
+    print(f"  ✅ PU efetivo: {completados} materiais completados via Valor/Qtd do estoque")
 
     # ── PEDIDOS ───────────────────────────────
     df_ped = pd.read_excel(ARQ_ENTRADA, sheet_name=ABA_PEDIDOS, header=0)
@@ -127,7 +144,7 @@ def ler_bases():
 
     print(f"  ✅ Plano irrestrito: {len(consumo)} consumos mensais")
 
-    return df_est, entradas, consumo, meta_classe, pu_dict
+    return df_est, entradas, consumo, meta_classe, pu_dict_efetivo
 
 
 # ─────────────────────────────────────────────
@@ -137,6 +154,7 @@ def projetar(df_est, entradas, consumo, meta_classe, pu_dict):
     print("\n⚙️  Calculando projeção...")
 
     saldo_qtd = df_est.set_index('chave')['Qtd_estoque'].to_dict()
+    saldo_val = df_est.set_index('chave')['Valor_estoque'].to_dict()
     meta_cod  = df_est.set_index('chave')['cod'].to_dict()
     meta_emp  = df_est.set_index('chave')['empresa'].to_dict()
     meta_desc = df_est.set_index('chave')['descricao'].to_dict()
@@ -167,7 +185,7 @@ def projetar(df_est, entradas, consumo, meta_classe, pu_dict):
         qtd = float(saldo_qtd.get(chave, 0.0))
         pu  = pu_dict.get(chave, 0.0)
 
-        for mes in MESES:
+        for i, mes in enumerate(MESES):
             try:
                 e = ent_idx.loc[(chave, mes)]
                 qtd_ent = float(e['Qtd_entrada']) if isinstance(e, pd.Series) else float(e['Qtd_entrada'].sum())
@@ -183,8 +201,12 @@ def projetar(df_est, entradas, consumo, meta_classe, pu_dict):
 
             qtd_disp  = qtd + qtd_ent
             qtd_final = qtd_disp - qtd_con
+            if i == 0:
+                rs_ini = float(saldo_val.get(chave, 0.0))   # ← usa valor real no 1º mês
+            else:
+                rs_ini = max(qtd, 0.0) * pu
 
-            rs_ini   = max(qtd, 0.0)       * pu
+            
             rs_con   = max(qtd_con, 0.0)   * pu
             rs_final = max(qtd_final, 0.0) * pu
 
