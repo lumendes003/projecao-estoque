@@ -23,14 +23,16 @@ warnings.filterwarnings('ignore')
 MES_INICIO  = '2026-08-01'   # ← atualizar mensalmente
 
 PASTA_BASE  = Path(r'\\10.7.1.90\Expansao_At_Automacao\9. EXEC_CONTROLE OBRAS AT\BASES\PROJEÇÃO_ESTOQUE')
-ARQ_ENTRADA = PASTA_BASE / 'TESTE_SANIDADE.xlsx'
-ARQ_PLANO   = PASTA_BASE / 'PLANO IRRESTRITO VERSÃO ATUAL BI.xlsx'
-ARQ_SAIDA   = PASTA_BASE / 'PROJECAO_ESTOQUE_FINANCEIRO_2026_AGO.xlsx'
+ARQ_PLANO   = Path(r'\\10.7.1.90\Expansao_At_Automacao\5.EXEC_GESTÃO DE PROJETOS_AT\5 - Aquisição de Materiais\3 - Solicitações de Compra\3 Compra Prévia\ATUAL BI\COBERTURA POR OBRAS\BASE ENTRADA COBERTURA OBRAS.xlsm')
+ARQ_ENTRADA = PASTA_BASE / 'entrada.xlsx'
 
+# Nomes de aba são strings, não Path!
 ABA_ESTOQUE = 'Estoque'
 ABA_PEDIDOS = 'PEDIDOS'
-ABA_PLANO   = 'LISTA + RESERVAS'
-ABA_PU      = 'PU'
+ABA_PLANO   = 'PLANO 2025'
+ABA_PU      = 'PLANO 2025'
+
+ARQ_SAIDA   = PASTA_BASE / 'PROJECAO_ESTOQUE_FINANCEIRO_2026.xlsx'
 
 SUBCLASSES_EXCLUIR = ['TORRE METÁLICA', 'TRANSFORMADOR DE FORÇA', 'MÓDULO GIS', 'REGULADOR DE TENSÃO','POSTE MONOTUBULAR']
 CLASSES_EXCLUIR    = ['PRÉ-MOLDADO','TRANSFORMADOR DE FORÇA']
@@ -67,11 +69,10 @@ def ler_bases():
     print(f"  ✅ Estoque: {len(df_est)} materiais — R$ {df_est['Valor_estoque'].sum():,.0f}")
 
     # ── TABELA PU ────────────────────────────
-    df_pu = pd.read_excel(ARQ_ENTRADA, sheet_name=ABA_PU, header=0)
-    df_pu['COD_str']  = df_pu['COD'].astype(str).str.strip()
-    cod_to_empresa    = df_est.set_index('cod')['empresa'].to_dict()
-    df_pu['chave_pu'] = df_pu['COD_str'] + '|' + df_pu['COD_str'].map(cod_to_empresa).fillna('')
-    df_pu['Unit_num'] = pd.to_numeric(df_pu['Unit.'], errors='coerce').fillna(0)
+    df_pu = pd.read_excel(ARQ_PLANO, sheet_name=ABA_PU, header=2)
+    df_pu['COD_str']  = df_pu['COD SAP'].astype(str).str.strip()
+    df_pu['chave_pu'] = df_pu['COD_str'] + '|' + df_pu['EMPRESA'].astype(str).str.strip()
+    df_pu['Unit_num'] = pd.to_numeric(df_pu['PU'], errors='coerce').fillna(0)
     pu_dict = df_pu.set_index('chave_pu')['Unit_num'].to_dict()
     print(f"  ✅ Tabela PU: {len(pu_dict)} preços carregados")
 
@@ -79,8 +80,8 @@ def ler_bases():
     df_ped = pd.read_excel(ARQ_ENTRADA, sheet_name=ABA_PEDIDOS, header=0)
     df_ped['chave']       = df_ped['Material'].astype(str).str.strip() + '|' + df_ped['EMPRESA'].astype(str).str.strip()
     df_ped['Data_entrega'] = pd.to_datetime(df_ped['Dat.rem.estatística'], dayfirst=True, errors='coerce')
-    df_ped['Qtd_pedido']   = pd.to_numeric(df_ped['a ser fornecida (quantidade)'], errors='coerce').fillna(0)
-    df_ped['Val_pedido']   = pd.to_numeric(df_ped['a ser fornecido (valor'],       errors='coerce').fillna(0)
+    df_ped['Qtd_pedido']   = pd.to_numeric(df_ped['Qtd.a fornecer'], errors='coerce').fillna(0)
+    df_ped['Val_pedido']   = pd.to_numeric(df_ped['Valor'],       errors='coerce').fillna(0)
     df_ped['Mes_entrega']  = df_ped['Data_entrega'].dt.to_period('M').dt.to_timestamp()
 
     if 'CLASSE' in df_ped.columns:
@@ -97,7 +98,7 @@ def ler_bases():
     print(f"  ✅ Pedidos: {len(entradas)} entradas mensais — R$ {df_ped['Val_pedido'].sum():,.0f}")
 
     # ── PLANO IRRESTRITO ──────────────────────
-    df_plano = pd.read_excel(ARQ_PLANO, sheet_name=ABA_PLANO, header=0, engine='openpyxl')
+    df_plano = pd.read_excel(ARQ_PLANO, sheet_name=ABA_PLANO, header=2, engine='openpyxl')
     df_plano['chave'] = df_plano['COD SAP'].astype(str).str.strip() + '|' + df_plano['EMPRESA'].astype(str).str.strip()
     df_plano['DATA NECESSIDADE'] = pd.to_datetime(df_plano['DATA NECESSIDADE'], errors='coerce')
     df_plano['Mes_consumo']      = df_plano['DATA NECESSIDADE'].dt.to_period('M').dt.to_timestamp()
