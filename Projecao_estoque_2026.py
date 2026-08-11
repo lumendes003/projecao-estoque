@@ -26,14 +26,14 @@ warnings.filterwarnings('ignore')
 MES_INICIO  = '2026-08-01'   # ← atualizar mensalmente
 
 PASTA_BASE  = Path(r'\\10.7.1.90\Expansao_At_Automacao\9. EXEC_CONTROLE OBRAS AT\BASES\PROJEÇÃO_ESTOQUE')
-ARQ_PLANO   = Path(r'\\10.7.1.90\Expansao_At_Automacao\5.EXEC_GESTÃO DE PROJETOS_AT\5 - Aquisição de Materiais\3 - Solicitações de Compra\3 Compra Prévia\ATUAL BI\COBERTURA POR OBRAS\BASE ENTRADA COBERTURA OBRAS.xlsm')
+ARQ_PLANO   = Path(r'\\10.7.1.90\Expansao_At_Automacao\5.EXEC_GESTÃO DE PROJETOS_AT\5 - Aquisição de Materiais\3 - Solicitações de Compra\3 Compra Prévia\ATUAL BI\ATUAL PLANO IRRESTRITO\PLANO IRRESTRITO VERSÃO ATUAL BI.xlsm')
 ARQ_ENTRADA = PASTA_BASE / 'entrada.xlsx'
 
 # Nomes de aba são strings, não Path!
 ABA_ESTOQUE = 'Estoque'
 ABA_PEDIDOS = 'PEDIDOS'
-ABA_PLANO   = 'PLANO 2025'
-ABA_PU      = 'PLANO 2025'
+ABA_PLANO   = 'LISTA + RESERVAS'
+ABA_PU      = 'PU'
 
 ARQ_SAIDA   = PASTA_BASE / 'PROJECAO_ESTOQUE_FINANCEIRO_2026.xlsx'
 
@@ -86,10 +86,10 @@ def ler_bases():
         print(f"  ⚠️  Materiais com Qtd_estoque negativa: {len(negativos)} — R$ {negativos['Valor_estoque'].sum():,.0f} (serão tratados como 0 na projeção)")
 
     # ── TABELA PU ────────────────────────────
-    df_pu = pd.read_excel(ARQ_PLANO, sheet_name=ABA_PU, header=2)
+    df_pu = pd.read_excel(ARQ_PLANO, sheet_name=ABA_PU, header=0)
     df_pu.columns = df_pu.columns.str.strip()
-    df_pu['COD_str']  = df_pu['COD SAP'].apply(normaliza_cod)
-    df_pu['chave_pu'] = df_pu['COD_str'] + '|' + df_pu['EMPRESA'].astype(str).str.strip()
+    df_pu['COD_str']  = df_pu['COD'].apply(normaliza_cod)
+    df_pu['chave_pu'] = df_pu['COD_str'] + '|' + df_pu['Empresa'].astype(str).str.strip()
     df_pu['Unit_num'] = pd.to_numeric(df_pu['PU'], errors='coerce').fillna(0)
     pu_dict = df_pu.set_index('chave_pu')['Unit_num'].to_dict()
     print(f"  ✅ Tabela PU: {len(pu_dict)} preços carregados")
@@ -148,7 +148,7 @@ def ler_bases():
     print(f"  ✅ PU completado via preço do próprio pedido: {completados_via_pedido} chaves")
 
     # ── PLANO IRRESTRITO ──────────────────────
-    df_plano = pd.read_excel(ARQ_PLANO, sheet_name=ABA_PLANO, header=2, engine='openpyxl')
+    df_plano = pd.read_excel(ARQ_PLANO, sheet_name=ABA_PLANO, header=0, engine='openpyxl')
     df_plano.columns = df_plano.columns.str.strip()
     df_plano['cod_mat'] = df_plano['COD SAP'].apply(normaliza_cod)
     df_plano['empresa']  = df_plano['EMPRESA'].astype(str).str.strip()
