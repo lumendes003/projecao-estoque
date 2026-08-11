@@ -3,9 +3,12 @@ PROJEÇÃO DE ESTOQUE FINANCEIRO - EQTL 2026
 ===========================================
 Lógica (igual ao modelo do analista):
   1. Saldo qtd = estoque atual + pedidos que chegam no mês - consumo do plano
-  2. Saldo R$  = max(Saldo qtd, 0) × PU
-  3. Entradas R$ = valor direto do pedido
+  2. Saldo R$  = Saldo qtd × PU
+  3. Entradas R$ = qtd_entrada × PU (consistente com ini/con/final)
   4. O saldo propaga mês a mês em quantidade
+  5. Quantidade nunca fica negativa: consumo é limitado ao disponível
+     (estoque inicial + entradas do mês). Isso garante que, item a item
+     e mês a mês, a identidade "ini + ent - con = final" sempre fecha.
 
   ⚙️  Para atualizar todo mês: altere apenas MES_INICIO abaixo.
 """
@@ -41,11 +44,20 @@ TODOS_MESES = pd.date_range('2026-01-01', '2026-12-01', freq='MS')
 CORTE       = pd.Timestamp(MES_INICIO)
 MESES       = [m for m in TODOS_MESES if m >= CORTE]
 
+
 def mes_ptbr(m):
     return m.strftime('%b/%y').upper()\
         .replace('MAY','MAI').replace('AUG','AGO')\
         .replace('SEP','SET').replace('OCT','OUT')\
         .replace('DEC','DEZ')
+
+
+def normaliza_cod(valor):
+    """Remove .0 de floats, espaços, e garante string limpa comparável entre abas."""
+    s = str(valor).strip()
+    if s.endswith('.0'):
+        s = s[:-2]
+    return s
 
 
 # ─────────────────────────────────────────────
@@ -56,9 +68,9 @@ def ler_bases():
 
     # ── ESTOQUE ──────────────────────────────
     df_est = pd.read_excel(ARQ_ENTRADA, sheet_name=ABA_ESTOQUE, header=0)
-    df_est['chave'] = df_est['CÓD MATERIAL'].astype(str).str.strip() + '|' + df_est['EMPRESA'].astype(str).str.strip()
-    df_est['cod']       = df_est['CÓD MATERIAL'].astype(str).str.strip()
+    df_est['cod']       = df_est['CÓD MATERIAL'].apply(normaliza_cod)
     df_est['empresa']   = df_est['EMPRESA'].astype(str).str.strip()
+    df_est['chave']     = df_est['cod'] + '|' + df_est['empresa']
     df_est['descricao'] = df_est['DESCRIÇÃO MATERIAL'].astype(str).str.strip() if 'DESCRIÇÃO MATERIAL' in df_est.columns else ''
     df_est['Qtd_estoque']   = pd.to_numeric(df_est['QUANTIDADE'], errors='coerce').fillna(0)
     df_est['Valor_estoque'] = pd.to_numeric(df_est['VALOR'],      errors='coerce').fillna(0)
@@ -68,17 +80,20 @@ def ler_bases():
     df_est  = df_est.merge(df_meta, on='chave', how='left')
     print(f"  ✅ Estoque: {len(df_est)} materiais — R$ {df_est['Valor_estoque'].sum():,.0f}")
 
-    # ── TABELA PU ────────────────────────────
+    # ── Diagnóstico: quantos materiais têm quantidade negativa em estoque ──
+    negativos = df_est[df_est['Qtd_estoque'] < 0]
+    if not negativos.empty:
+        print(f"  ⚠️  Materiais com Qtd_estoque negativa: {len(negativos)} — R$ {negativos['Valor_estoque'].sum():,.0f} (serão tratados como 0 na projeção)")
+
     # ── TABELA PU ────────────────────────────
     df_pu = pd.read_excel(ARQ_PLANO, sheet_name=ABA_PU, header=2)
     df_pu.columns = df_pu.columns.str.strip()
-    df_pu['COD_str']  = df_pu['COD SAP'].astype(str).str.strip()
+    df_pu['COD_str']  = df_pu['COD SAP'].apply(normaliza_cod)
     df_pu['chave_pu'] = df_pu['COD_str'] + '|' + df_pu['EMPRESA'].astype(str).str.strip()
     df_pu['Unit_num'] = pd.to_numeric(df_pu['PU'], errors='coerce').fillna(0)
     pu_dict = df_pu.set_index('chave_pu')['Unit_num'].to_dict()
     print(f"  ✅ Tabela PU: {len(pu_dict)} preços carregados")
 
-   
     # ── PU EFETIVO (custo médio real do estoque tem prioridade sobre o PU do Plano) ──
     pu_dict_efetivo = dict(pu_dict)   # começa com os preços oficiais do Plano
     substituidos = 0
@@ -91,12 +106,13 @@ def ler_bases():
             else:
                 completados += 1
             pu_dict_efetivo[row['chave']] = pu_real   # sempre sobrescreve com o custo real
-
     print(f"  ✅ PU efetivo: {substituidos} substituídos pelo custo médio real + {completados} completados (sem PU oficial)")
 
     # ── PEDIDOS ───────────────────────────────
     df_ped = pd.read_excel(ARQ_ENTRADA, sheet_name=ABA_PEDIDOS, header=0)
-    df_ped['chave']       = df_ped['Material'].astype(str).str.strip() + '|' + df_ped['EMPRESA'].astype(str).str.strip()
+    df_ped['cod_mat']      = df_ped['Material'].apply(normaliza_cod)
+    df_ped['empresa']      = df_ped['EMPRESA'].astype(str).str.strip()
+    df_ped['chave']        = df_ped['cod_mat'] + '|' + df_ped['empresa']
     df_ped['Data_entrega'] = pd.to_datetime(df_ped['Dat.rem.estatística'], dayfirst=True, errors='coerce')
     df_ped['Qtd_pedido']   = pd.to_numeric(df_ped['Qtd.a fornecer'], errors='coerce').fillna(0)
     df_ped['Val_pedido']   = pd.to_numeric(df_ped['Valor'],       errors='coerce').fillna(0)
@@ -115,9 +131,28 @@ def ler_bases():
     )
     print(f"  ✅ Pedidos: {len(entradas)} entradas mensais — R$ {df_ped['Val_pedido'].sum():,.0f}")
 
+    # ── DIAGNÓSTICO: chaves de pedido sem PU ──
+    chaves_pedido = set(entradas['chave'].unique())
+    chaves_com_pu = set(pu_dict_efetivo.keys())
+    sem_pu_pedido = chaves_pedido - chaves_com_pu
+    print(f"  🔎 Chaves de pedidos sem PU (antes do fallback): {len(sem_pu_pedido)} de {len(chaves_pedido)}")
+
+    # ── FALLBACK FINAL: usa preço do próprio pedido para chaves ainda sem PU ──
+    df_ped_validos = df_ped[df_ped['Qtd_pedido'] > 0]
+    completados_via_pedido = 0
+    for chave in sem_pu_pedido:
+        sub = df_ped_validos[df_ped_validos['chave'] == chave]
+        if not sub.empty and sub['Qtd_pedido'].sum() > 0:
+            pu_dict_efetivo[chave] = sub['Val_pedido'].sum() / sub['Qtd_pedido'].sum()
+            completados_via_pedido += 1
+    print(f"  ✅ PU completado via preço do próprio pedido: {completados_via_pedido} chaves")
+
     # ── PLANO IRRESTRITO ──────────────────────
     df_plano = pd.read_excel(ARQ_PLANO, sheet_name=ABA_PLANO, header=2, engine='openpyxl')
-    df_plano['chave'] = df_plano['COD SAP'].astype(str).str.strip() + '|' + df_plano['EMPRESA'].astype(str).str.strip()
+    df_plano.columns = df_plano.columns.str.strip()
+    df_plano['cod_mat'] = df_plano['COD SAP'].apply(normaliza_cod)
+    df_plano['empresa']  = df_plano['EMPRESA'].astype(str).str.strip()
+    df_plano['chave']    = df_plano['cod_mat'] + '|' + df_plano['empresa']
     df_plano['DATA NECESSIDADE'] = pd.to_datetime(df_plano['DATA NECESSIDADE'], errors='coerce')
     df_plano['Mes_consumo']      = df_plano['DATA NECESSIDADE'].dt.to_period('M').dt.to_timestamp()
     df_plano['QTD ITEM']         = pd.to_numeric(df_plano['QTD ITEM'], errors='coerce').fillna(0)
@@ -179,36 +214,36 @@ def projetar(df_est, entradas, consumo, meta_classe, pu_dict):
             meta_cls[chave]  = ''
             meta_sub[chave]  = ''
 
-    linhas = []
+    linhas = []  # acumula um dicionário por (material, mês) — vira uma linha do Excel final
 
     for chave in sorted(todas_chaves):
-        qtd = float(saldo_qtd.get(chave, 0.0))
+        # Quantidade inicial nunca começa negativa: um saldo negativo em estoque
+        # é inconsistência de cadastro, não uma quantidade física real.
+        qtd = max(float(saldo_qtd.get(chave, 0.0)), 0.0)
         pu  = pu_dict.get(chave, 0.0)
 
         for i, mes in enumerate(MESES):
             try:
                 e = ent_idx.loc[(chave, mes)]
                 qtd_ent = float(e['Qtd_entrada']) if isinstance(e, pd.Series) else float(e['Qtd_entrada'].sum())
-                rs_ent  = float(e['Val_entrada'])  if isinstance(e, pd.Series) else float(e['Val_entrada'].sum())
             except KeyError:
-                qtd_ent, rs_ent = 0.0, 0.0
+                qtd_ent = 0.0
 
             try:
                 c = con_idx.loc[(chave, mes)]
-                qtd_con = float(c['Qtd_consumo']) if isinstance(c, pd.Series) else float(c['Qtd_consumo'].sum())
+                qtd_con_solicitado = float(c['Qtd_consumo']) if isinstance(c, pd.Series) else float(c['Qtd_consumo'].sum())
             except KeyError:
-                qtd_con = 0.0
+                qtd_con_solicitado = 0.0
 
             qtd_disp  = qtd + qtd_ent
-            qtd_final = qtd_disp - qtd_con
+            # Não é possível consumir mais do que está disponível (estoque + entrada do mês).
+            qtd_con   = min(qtd_con_solicitado, qtd_disp)
+            qtd_final = max(qtd_disp - qtd_con, 0.0)
 
-            rs_ini   = max(qtd, 0.0)       * pu
-            rs_con   = max(qtd_con, 0.0)   * pu
-            rs_final = max(qtd_final, 0.0) * pu
-
-            
-            rs_con   = max(qtd_con, 0.0)   * pu
-            rs_final = max(qtd_final, 0.0) * pu
+            rs_ini   = qtd        * pu
+            rs_ent   = qtd_ent    * pu
+            rs_con   = qtd_con    * pu
+            rs_final = qtd_final  * pu
 
             linhas.append({
                 'cod':         meta_cod.get(chave, ''),
@@ -237,7 +272,7 @@ def projetar(df_est, entradas, consumo, meta_classe, pu_dict):
 # RESUMO MENSAL
 # ─────────────────────────────────────────────
 def resumo_mensal(df_proj):
-    r = df_proj.groupby(['mes', 'empresa'], sort=False).agg(
+    r = df_proj.groupby('mes', sort=False).agg(
         **{'Entradas (R$)':    ('rs_entrada', 'sum'),
            'Consumo (R$)':     ('rs_consumo', 'sum'),
            'Saldo final (R$)': ('rs_final',   'sum')}
@@ -245,14 +280,12 @@ def resumo_mensal(df_proj):
 
     ordem = [mes_ptbr(m) for m in MESES]
     r['_ord'] = r['mes'].map({m: i for i, m in enumerate(ordem)})
-    r = r.sort_values(['_ord', 'empresa']).drop(columns='_ord')
-    r.rename(columns={'mes': 'Mês', 'empresa': 'Empresa'}, inplace=True)
+    r = r.sort_values('_ord').drop(columns='_ord')
+    r.rename(columns={'mes': 'Mês'}, inplace=True)
 
-    ini_por_mes_emp = df_proj.groupby(['mes', 'empresa'])['rs_ini'].sum()
-    r['Estoque inicial (R$)'] = r.apply(
-        lambda row: ini_por_mes_emp.get((row['Mês'], row['Empresa']), 0.0), axis=1
-    )
-    r = r[['Mês', 'Empresa', 'Estoque inicial (R$)', 'Entradas (R$)', 'Consumo (R$)', 'Saldo final (R$)']]
+    ini_por_mes = df_proj.groupby('mes')['rs_ini'].sum().to_dict()
+    r['Estoque inicial (R$)'] = r['Mês'].map(ini_por_mes)
+    r = r[['Mês', 'Estoque inicial (R$)', 'Entradas (R$)', 'Consumo (R$)', 'Saldo final (R$)']]
 
     return r
 
