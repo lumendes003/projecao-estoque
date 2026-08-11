@@ -78,20 +78,21 @@ def ler_bases():
     pu_dict = df_pu.set_index('chave_pu')['Unit_num'].to_dict()
     print(f"  ✅ Tabela PU: {len(pu_dict)} preços carregados")
 
-    # ── PU EFETIVO (fallback: usa Valor/Qtd do próprio estoque quando falta PU) ──
-    chaves_est   = set(df_est['chave'])
-    chaves_pu    = set(pu_dict.keys())
-    sem_pu       = chaves_est - chaves_pu
-    valor_sem_pu = df_est[df_est['chave'].isin(sem_pu)]['Valor_estoque'].sum()
-    print(f"  ⚠️  Materiais em estoque sem PU na tabela: {len(sem_pu)} — R$ {valor_sem_pu:,.0f}")
-
-    pu_dict_efetivo = dict(pu_dict)
-    completados = 0
+   
+    # ── PU EFETIVO (custo médio real do estoque tem prioridade sobre o PU do Plano) ──
+    pu_dict_efetivo = dict(pu_dict)   # começa com os preços oficiais do Plano
+    substituidos = 0
+    completados  = 0
     for _, row in df_est.iterrows():
-        if row['chave'] not in pu_dict_efetivo and row['Qtd_estoque'] > 0:
-            pu_dict_efetivo[row['chave']] = row['Valor_estoque'] / row['Qtd_estoque']
-            completados += 1
-    print(f"  ✅ PU efetivo: {completados} materiais completados via Valor/Qtd do estoque")
+        if row['Qtd_estoque'] > 0:
+            pu_real = row['Valor_estoque'] / row['Qtd_estoque']
+            if row['chave'] in pu_dict_efetivo:
+                substituidos += 1
+            else:
+                completados += 1
+            pu_dict_efetivo[row['chave']] = pu_real   # sempre sobrescreve com o custo real
+
+    print(f"  ✅ PU efetivo: {substituidos} substituídos pelo custo médio real + {completados} completados (sem PU oficial)")
 
     # ── PEDIDOS ───────────────────────────────
     df_ped = pd.read_excel(ARQ_ENTRADA, sheet_name=ABA_PEDIDOS, header=0)
@@ -154,7 +155,6 @@ def projetar(df_est, entradas, consumo, meta_classe, pu_dict):
     print("\n⚙️  Calculando projeção...")
 
     saldo_qtd = df_est.set_index('chave')['Qtd_estoque'].to_dict()
-    saldo_val = df_est.set_index('chave')['Valor_estoque'].to_dict()
     meta_cod  = df_est.set_index('chave')['cod'].to_dict()
     meta_emp  = df_est.set_index('chave')['empresa'].to_dict()
     meta_desc = df_est.set_index('chave')['descricao'].to_dict()
@@ -201,10 +201,10 @@ def projetar(df_est, entradas, consumo, meta_classe, pu_dict):
 
             qtd_disp  = qtd + qtd_ent
             qtd_final = qtd_disp - qtd_con
-            if i == 0:
-                rs_ini = float(saldo_val.get(chave, 0.0))   # ← usa valor real no 1º mês
-            else:
-                rs_ini = max(qtd, 0.0) * pu
+
+            rs_ini   = max(qtd, 0.0)       * pu
+            rs_con   = max(qtd_con, 0.0)   * pu
+            rs_final = max(qtd_final, 0.0) * pu
 
             
             rs_con   = max(qtd_con, 0.0)   * pu
@@ -237,7 +237,7 @@ def projetar(df_est, entradas, consumo, meta_classe, pu_dict):
 # RESUMO MENSAL
 # ─────────────────────────────────────────────
 def resumo_mensal(df_proj):
-    r = df_proj.groupby('mes', sort=False).agg(
+    r = df_proj.groupby(['mes', 'empresa'], sort=False).agg(
         **{'Entradas (R$)':    ('rs_entrada', 'sum'),
            'Consumo (R$)':     ('rs_consumo', 'sum'),
            'Saldo final (R$)': ('rs_final',   'sum')}
@@ -245,12 +245,14 @@ def resumo_mensal(df_proj):
 
     ordem = [mes_ptbr(m) for m in MESES]
     r['_ord'] = r['mes'].map({m: i for i, m in enumerate(ordem)})
-    r = r.sort_values('_ord').drop(columns='_ord')
-    r.rename(columns={'mes': 'Mês'}, inplace=True)
+    r = r.sort_values(['_ord', 'empresa']).drop(columns='_ord')
+    r.rename(columns={'mes': 'Mês', 'empresa': 'Empresa'}, inplace=True)
 
-    ini_por_mes = df_proj.groupby('mes')['rs_ini'].sum().to_dict()
-    r['Estoque inicial (R$)'] = r['Mês'].map(ini_por_mes)
-    r = r[['Mês', 'Estoque inicial (R$)', 'Entradas (R$)', 'Consumo (R$)', 'Saldo final (R$)']]
+    ini_por_mes_emp = df_proj.groupby(['mes', 'empresa'])['rs_ini'].sum()
+    r['Estoque inicial (R$)'] = r.apply(
+        lambda row: ini_por_mes_emp.get((row['Mês'], row['Empresa']), 0.0), axis=1
+    )
+    r = r[['Mês', 'Empresa', 'Estoque inicial (R$)', 'Entradas (R$)', 'Consumo (R$)', 'Saldo final (R$)']]
 
     return r
 
