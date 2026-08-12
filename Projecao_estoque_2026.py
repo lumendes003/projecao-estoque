@@ -1,14 +1,22 @@
 """
 PROJEÇÃO DE ESTOQUE FINANCEIRO - EQTL 2026
 ===========================================
-Lógica (igual ao modelo do analista):
-  1. Saldo qtd = estoque atual + pedidos que chegam no mês - consumo do plano
-  2. Saldo R$  = Saldo qtd × PU
-  3. Entradas R$ = qtd_entrada × PU (consistente com ini/con/final)
-  4. O saldo propaga mês a mês em quantidade
-  5. Quantidade nunca fica negativa: consumo é limitado ao disponível
-     (estoque inicial + entradas do mês). Isso garante que, item a item
-     e mês a mês, a identidade "ini + ent - con = final" sempre fecha.
+Lógica (separada em duas etapas independentes):
+
+  ETAPA 1 — QUANTIDADE (não depende de preço/PU em nada):
+    Qtd final = Qtd inicial + Qtd entrada (pedidos) - Qtd consumo (plano)
+    Consumo é limitado ao disponível (nunca fica negativo).
+    Propaga mês a mês.
+
+  ETAPA 2 — VALORAÇÃO (aplicada só no final, sobre as quantidades já prontas):
+    R$ = Quantidade × PU
+    PU = custo médio real do estoque (Valor/Qtd) quando existe;
+         senão, preço da tabela PU; senão, preço do próprio pedido.
+
+  Separar assim evita que qualquer problema de leitura da tabela de PU
+  (aba errada, coluna renomeada, etc.) afete o cálculo de quantidade —
+  o pior caso é um material ficar com PU = 0 (valor R$ zerado), mas a
+  quantidade projetada nunca é afetada.
 
   ⚙️  Para atualizar todo mês: altere apenas MES_INICIO abaixo.
 """
@@ -60,6 +68,42 @@ def normaliza_cod(valor):
     return s
 
 
+def encontra_coluna(df, candidatos):
+    """Procura a primeira coluna existente entre os nomes candidatos
+    (ignorando maiúsculas/minúsculas e espaços nas bordas). Retorna
+    o nome REAL da coluna no df, ou None se nenhum candidato existir."""
+    cols_norm = {c.strip().upper(): c for c in df.columns}
+    for cand in candidatos:
+        alvo = cand.strip().upper()
+        if alvo in cols_norm:
+            return cols_norm[alvo]
+    return None
+
+
+def ler_aba_com_cabecalho_flexivel(caminho, aba, candidatos_coluna_chave, max_linhas_teste=6, **kwargs):
+    """Lê uma aba testando header=0,1,2,...,max_linhas_teste até achar uma
+    leitura em que pelo menos uma das colunas candidatas apareça. Isso evita
+    quebrar quando o layout da planilha muda (título mesclado, linha extra, etc.).
+    Retorna (df, header_usado, coluna_encontrada) ou lança erro descritivo."""
+    for header in range(max_linhas_teste):
+        try:
+            df_tmp = pd.read_excel(caminho, sheet_name=aba, header=header, **kwargs)
+        except Exception:
+            continue
+        df_tmp.columns = df_tmp.columns.astype(str).str.strip()
+        col = encontra_coluna(df_tmp, candidatos_coluna_chave)
+        if col is not None:
+            return df_tmp, header, col
+
+    # Nenhum header testado funcionou — mostra o que existe no header=0 para diagnóstico
+    df_diag = pd.read_excel(caminho, sheet_name=aba, header=0, **kwargs)
+    raise KeyError(
+        f"Não encontrei nenhuma das colunas {candidatos_coluna_chave} na aba '{aba}' "
+        f"testando header de 0 a {max_linhas_teste - 1}. "
+        f"Colunas encontradas com header=0: {df_diag.columns.tolist()}"
+    )
+
+
 # ─────────────────────────────────────────────
 # LEITURA
 # ─────────────────────────────────────────────
@@ -80,33 +124,9 @@ def ler_bases():
     df_est  = df_est.merge(df_meta, on='chave', how='left')
     print(f"  ✅ Estoque: {len(df_est)} materiais — R$ {df_est['Valor_estoque'].sum():,.0f}")
 
-    # ── Diagnóstico: quantos materiais têm quantidade negativa em estoque ──
     negativos = df_est[df_est['Qtd_estoque'] < 0]
     if not negativos.empty:
-        print(f"  ⚠️  Materiais com Qtd_estoque negativa: {len(negativos)} — R$ {negativos['Valor_estoque'].sum():,.0f} (serão tratados como 0 na projeção)")
-
-    # ── TABELA PU ────────────────────────────
-    df_pu = pd.read_excel(ARQ_PLANO, sheet_name=ABA_PU, header=0)
-    df_pu.columns = df_pu.columns.str.strip()
-    df_pu['COD_str']  = df_pu['COD'].apply(normaliza_cod)
-    df_pu['chave_pu'] = df_pu['COD_str'] + '|' + df_pu['Empresa'].astype(str).str.strip()
-    df_pu['Unit_num'] = pd.to_numeric(df_pu['PU'], errors='coerce').fillna(0)
-    pu_dict = df_pu.set_index('chave_pu')['Unit_num'].to_dict()
-    print(f"  ✅ Tabela PU: {len(pu_dict)} preços carregados")
-
-    # ── PU EFETIVO (custo médio real do estoque tem prioridade sobre o PU do Plano) ──
-    pu_dict_efetivo = dict(pu_dict)   # começa com os preços oficiais do Plano
-    substituidos = 0
-    completados  = 0
-    for _, row in df_est.iterrows():
-        if row['Qtd_estoque'] > 0:
-            pu_real = row['Valor_estoque'] / row['Qtd_estoque']
-            if row['chave'] in pu_dict_efetivo:
-                substituidos += 1
-            else:
-                completados += 1
-            pu_dict_efetivo[row['chave']] = pu_real   # sempre sobrescreve com o custo real
-    print(f"  ✅ PU efetivo: {substituidos} substituídos pelo custo médio real + {completados} completados (sem PU oficial)")
+        print(f"  ⚠️  Materiais com Qtd_estoque negativa: {len(negativos)} — R$ {negativos['Valor_estoque'].sum():,.0f} (tratados como 0 na projeção)")
 
     # ── PEDIDOS ───────────────────────────────
     df_ped = pd.read_excel(ARQ_ENTRADA, sheet_name=ABA_PEDIDOS, header=0)
@@ -119,8 +139,12 @@ def ler_bases():
     df_ped['Mes_entrega']  = df_ped['Data_entrega'].dt.to_period('M').dt.to_timestamp()
 
     if 'CLASSE' in df_ped.columns:
+        excl = df_ped[df_ped['CLASSE'].astype(str).str.strip().isin(CLASSES_EXCLUIR)]
+        print(f"  🚫 Pedidos — excluídos por CLASSE: {len(excl)} linhas")
         df_ped = df_ped[~df_ped['CLASSE'].astype(str).str.strip().isin(CLASSES_EXCLUIR)].copy()
     if 'SUBCLASSE' in df_ped.columns:
+        excl = df_ped[df_ped['SUBCLASSE'].astype(str).str.strip().isin(SUBCLASSES_EXCLUIR)]
+        print(f"  🚫 Pedidos — excluídos por SUBCLASSE: {len(excl)} linhas")
         df_ped = df_ped[~df_ped['SUBCLASSE'].astype(str).str.strip().isin(SUBCLASSES_EXCLUIR)].copy()
 
     df_ped = df_ped[(df_ped['Qtd_pedido'] > 0) & (df_ped['Mes_entrega'] >= CORTE)].copy()
@@ -131,31 +155,53 @@ def ler_bases():
     )
     print(f"  ✅ Pedidos: {len(entradas)} entradas mensais — R$ {df_ped['Val_pedido'].sum():,.0f}")
 
-    # ── DIAGNÓSTICO: chaves de pedido sem PU ──
-    chaves_pedido = set(entradas['chave'].unique())
-    chaves_com_pu = set(pu_dict_efetivo.keys())
-    sem_pu_pedido = chaves_pedido - chaves_com_pu
-    print(f"  🔎 Chaves de pedidos sem PU (antes do fallback): {len(sem_pu_pedido)} de {len(chaves_pedido)}")
+    # ── PLANO IRRESTRITO (define a QUANTIDADE de consumo) ──────
+    df_plano, header_usado, col_cod_sap = ler_aba_com_cabecalho_flexivel(
+        ARQ_PLANO, ABA_PLANO,
+        candidatos_coluna_chave=['COD SAP', 'COD', 'CÓD MATERIAL', 'Código', 'Material'],
+        engine='openpyxl'
+    )
+    print(f"  🔎 Plano — cabeçalho encontrado na linha {header_usado} (coluna de código: '{col_cod_sap}')")
 
-    # ── FALLBACK FINAL: usa preço do próprio pedido para chaves ainda sem PU ──
-    df_ped_validos = df_ped[df_ped['Qtd_pedido'] > 0]
-    completados_via_pedido = 0
-    for chave in sem_pu_pedido:
-        sub = df_ped_validos[df_ped_validos['chave'] == chave]
-        if not sub.empty and sub['Qtd_pedido'].sum() > 0:
-            pu_dict_efetivo[chave] = sub['Val_pedido'].sum() / sub['Qtd_pedido'].sum()
-            completados_via_pedido += 1
-    print(f"  ✅ PU completado via preço do próprio pedido: {completados_via_pedido} chaves")
+    col_empresa = encontra_coluna(df_plano, ['EMPRESA', 'Empresa'])
+    col_qtd     = encontra_coluna(df_plano, ['QTD ITEM', 'QTD', 'Quantidade'])
+    col_data    = encontra_coluna(df_plano, ['DATA NECESSIDADE', 'Data Necessidade'])
+    col_classe  = encontra_coluna(df_plano, ['CLASSE MATERIAL', 'CLASSE'])
+    col_subcls  = encontra_coluna(df_plano, ['SUBCLASSE MATERIAL', 'SUBCLASSE'])
+    col_blq     = encontra_coluna(df_plano, ['BLQ?', 'BLOQUEADO'])
 
-    # ── PLANO IRRESTRITO ──────────────────────
-    df_plano = pd.read_excel(ARQ_PLANO, sheet_name=ABA_PLANO, header=0, engine='openpyxl')
-    df_plano.columns = df_plano.columns.str.strip()
-    df_plano['cod_mat'] = df_plano['COD SAP'].apply(normaliza_cod)
-    df_plano['empresa']  = df_plano['EMPRESA'].astype(str).str.strip()
+    faltando = [nome for nome, col in [('EMPRESA', col_empresa), ('QTD ITEM', col_qtd), ('DATA NECESSIDADE', col_data)] if col is None]
+    if faltando:
+        raise KeyError(f"Colunas obrigatórias não encontradas no Plano: {faltando}. Colunas disponíveis: {df_plano.columns.tolist()}")
+
+    df_plano['cod_mat'] = df_plano[col_cod_sap].apply(normaliza_cod)
+    df_plano['empresa']  = df_plano[col_empresa].astype(str).str.strip()
     df_plano['chave']    = df_plano['cod_mat'] + '|' + df_plano['empresa']
-    df_plano['DATA NECESSIDADE'] = pd.to_datetime(df_plano['DATA NECESSIDADE'], errors='coerce')
+    df_plano['DATA NECESSIDADE'] = pd.to_datetime(df_plano[col_data], errors='coerce')
     df_plano['Mes_consumo']      = df_plano['DATA NECESSIDADE'].dt.to_period('M').dt.to_timestamp()
-    df_plano['QTD ITEM']         = pd.to_numeric(df_plano['QTD ITEM'], errors='coerce').fillna(0)
+    df_plano['QTD ITEM']         = pd.to_numeric(df_plano[col_qtd], errors='coerce').fillna(0)
+    if col_classe:
+        df_plano['CLASSE MATERIAL'] = df_plano[col_classe]
+    if col_subcls:
+        df_plano['SUBCLASSE MATERIAL'] = df_plano[col_subcls]
+    if col_blq:
+        df_plano['BLQ?'] = df_plano[col_blq]
+
+    if 'CLASSE MATERIAL' in df_plano.columns:
+        excl = df_plano[df_plano['CLASSE MATERIAL'].astype(str).str.strip().isin(CLASSES_EXCLUIR)]
+        print(f"  🚫 Plano — excluídos por CLASSE MATERIAL: {len(excl)} linhas")
+    if 'SUBCLASSE MATERIAL' in df_plano.columns:
+        excl = df_plano[df_plano['SUBCLASSE MATERIAL'].astype(str).str.strip().isin(SUBCLASSES_EXCLUIR)]
+        print(f"  🚫 Plano — excluídos por SUBCLASSE MATERIAL: {len(excl)} linhas")
+    if 'BLQ?' in df_plano.columns:
+        excl = df_plano[df_plano['BLQ?'].astype(str).str.upper().str.strip().isin(['SIM', 'BLOQUEADO'])]
+        print(f"  🚫 Plano — excluídos por BLQ?: {len(excl)} linhas")
+
+    # Metadata (classe/subclasse/descrição) capturada ANTES da exclusão,
+    # para que materiais excluídos do consumo ainda apareçam identificáveis no relatório.
+    meta_classe = df_plano.groupby('chave', as_index=False).agg(
+        classe=('CLASSE MATERIAL','first'), subclasse=('SUBCLASSE MATERIAL','first')
+    )
 
     if 'CLASSE MATERIAL' in df_plano.columns:
         df_plano = df_plano[~df_plano['CLASSE MATERIAL'].astype(str).str.strip().isin(CLASSES_EXCLUIR)].copy()
@@ -163,10 +209,6 @@ def ler_bases():
         df_plano = df_plano[~df_plano['SUBCLASSE MATERIAL'].astype(str).str.strip().isin(SUBCLASSES_EXCLUIR)].copy()
     if 'BLQ?' in df_plano.columns:
         df_plano = df_plano[~df_plano['BLQ?'].astype(str).str.upper().str.strip().isin(['SIM', 'BLOQUEADO'])].copy()
-
-    meta_classe = df_plano.groupby('chave', as_index=False).agg(
-        classe=('CLASSE MATERIAL','first'), subclasse=('SUBCLASSE MATERIAL','first')
-    )
 
     df_plano = df_plano[
         (df_plano['QTD ITEM'] > 0) &
@@ -180,14 +222,14 @@ def ler_bases():
 
     print(f"  ✅ Plano irrestrito: {len(consumo)} consumos mensais")
 
-    return df_est, entradas, consumo, meta_classe, pu_dict_efetivo
+    return df_est, entradas, consumo, meta_classe, df_ped
 
 
 # ─────────────────────────────────────────────
-# PROJEÇÃO MÊS A MÊS
+# ETAPA 1 — PROJEÇÃO DE QUANTIDADE (sem PU)
 # ─────────────────────────────────────────────
-def projetar(df_est, entradas, consumo, meta_classe, pu_dict):
-    print("\n⚙️  Calculando projeção...")
+def projetar_quantidade(df_est, entradas, consumo, meta_classe):
+    print("\n⚙️  Calculando projeção de QUANTIDADE (sem valorar ainda)...")
 
     saldo_qtd = df_est.set_index('chave')['Qtd_estoque'].to_dict()
     meta_cod  = df_est.set_index('chave')['cod'].to_dict()
@@ -214,15 +256,12 @@ def projetar(df_est, entradas, consumo, meta_classe, pu_dict):
             meta_cls[chave]  = ''
             meta_sub[chave]  = ''
 
-    linhas = []  # acumula um dicionário por (material, mês) — vira uma linha do Excel final
+    linhas = []  # um dicionário por (material, mês) — só quantidade, sem R$
 
     for chave in sorted(todas_chaves):
-        # Quantidade inicial nunca começa negativa: um saldo negativo em estoque
-        # é inconsistência de cadastro, não uma quantidade física real.
         qtd = max(float(saldo_qtd.get(chave, 0.0)), 0.0)
-        pu  = pu_dict.get(chave, 0.0)
 
-        for i, mes in enumerate(MESES):
+        for mes in MESES:
             try:
                 e = ent_idx.loc[(chave, mes)]
                 qtd_ent = float(e['Qtd_entrada']) if isinstance(e, pd.Series) else float(e['Qtd_entrada'].sum())
@@ -236,36 +275,111 @@ def projetar(df_est, entradas, consumo, meta_classe, pu_dict):
                 qtd_con_solicitado = 0.0
 
             qtd_disp  = qtd + qtd_ent
-            # Não é possível consumir mais do que está disponível (estoque + entrada do mês).
             qtd_con   = min(qtd_con_solicitado, qtd_disp)
             qtd_final = max(qtd_disp - qtd_con, 0.0)
 
-            rs_ini   = qtd        * pu
-            rs_ent   = qtd_ent    * pu
-            rs_con   = qtd_con    * pu
-            rs_final = qtd_final  * pu
-
             linhas.append({
+                'chave':       chave,
                 'cod':         meta_cod.get(chave, ''),
                 'empresa':     meta_emp.get(chave, ''),
                 'descricao':   meta_desc.get(chave, ''),
                 'classe':      meta_cls.get(chave, ''),
                 'subclasse':   meta_sub.get(chave, ''),
                 'mes':         mes_ptbr(mes),
-                'pu':          round(pu, 4),
                 'qtd_ini':     round(qtd, 2),
-                'rs_ini':      round(rs_ini, 2),
                 'qtd_entrada': round(qtd_ent, 2),
-                'rs_entrada':  round(rs_ent, 2),
                 'qtd_consumo': round(qtd_con, 2),
-                'rs_consumo':  round(rs_con, 2),
                 'qtd_final':   round(qtd_final, 2),
-                'rs_final':    round(rs_final, 2),
             })
 
             qtd = qtd_final
 
     return pd.DataFrame(linhas)
+
+
+# ─────────────────────────────────────────────
+# ETAPA 2 — MONTAGEM DO PU EFETIVO (isolada, defensiva)
+# ─────────────────────────────────────────────
+def montar_pu_efetivo(df_est, df_ped):
+    """Monta o dicionário chave -> PU, combinando (em ordem de prioridade):
+       1) custo médio real do estoque (Valor/Qtd)
+       2) tabela oficial de PU (aba PU do arquivo de Plano)
+       3) preço médio do próprio pedido (fallback final)
+       Qualquer problema de leitura da tabela PU só reduz a cobertura —
+       nunca quebra a execução."""
+
+    pu_dict = {}
+
+    # 1) Tenta ler a tabela oficial de PU
+    try:
+        df_pu, header_usado, col_cod = ler_aba_com_cabecalho_flexivel(
+            ARQ_PLANO, ABA_PU,
+            candidatos_coluna_chave=['COD', 'COD SAP', 'CÓD MATERIAL', 'Código', 'Material']
+        )
+        print(f"  🔎 PU — cabeçalho encontrado na linha {header_usado} (coluna de código: '{col_cod}')")
+
+        col_emp = encontra_coluna(df_pu, ['Empresa', 'EMPRESA'])
+        col_pu  = encontra_coluna(df_pu, ['PU', 'Preço Unitário', 'Preco Unitario', 'Unit'])
+
+        if col_emp and col_pu:
+            df_pu['COD_str']  = df_pu[col_cod].apply(normaliza_cod)
+            df_pu['chave_pu'] = df_pu['COD_str'] + '|' + df_pu[col_emp].astype(str).str.strip()
+            df_pu['Unit_num'] = pd.to_numeric(df_pu[col_pu], errors='coerce').fillna(0)
+            pu_dict = df_pu.set_index('chave_pu')['Unit_num'].to_dict()
+            print(f"  ✅ Tabela PU: {len(pu_dict)} preços carregados (colunas: {col_cod} / {col_emp} / {col_pu})")
+        else:
+            print(f"  ⚠️  Tabela PU: não encontrou empresa/PU (empresa={col_emp}, pu={col_pu}). Colunas disponíveis: {df_pu.columns.tolist()}")
+            print(f"  ⚠️  Seguindo sem a tabela oficial de PU — será usado custo médio do estoque e preço do pedido.")
+    except Exception as ex:
+        print(f"  ⚠️  Não foi possível ler a aba '{ABA_PU}' em '{ARQ_PLANO.name}': {ex}")
+        print(f"  ⚠️  Seguindo sem a tabela oficial de PU — será usado custo médio do estoque e preço do pedido.")
+
+    # 2) Custo médio real do estoque tem prioridade — sobrescreve o PU oficial
+    substituidos, completados = 0, 0
+    for _, row in df_est.iterrows():
+        if row['Qtd_estoque'] > 0:
+            pu_real = row['Valor_estoque'] / row['Qtd_estoque']
+            if row['chave'] in pu_dict:
+                substituidos += 1
+            else:
+                completados += 1
+            pu_dict[row['chave']] = pu_real
+    print(f"  ✅ PU efetivo: {substituidos} substituídos pelo custo médio real + {completados} completados (sem PU oficial)")
+
+    # 3) Fallback final: preço médio do próprio pedido, para chaves ainda sem PU
+    if 'Qtd_pedido' in df_ped.columns and 'Val_pedido' in df_ped.columns:
+        chaves_pedido = set(df_ped.loc[df_ped['Qtd_pedido'] > 0, 'chave'].unique())
+        sem_pu = chaves_pedido - set(pu_dict.keys())
+        completados_via_pedido = 0
+        for chave in sem_pu:
+            sub = df_ped[(df_ped['chave'] == chave) & (df_ped['Qtd_pedido'] > 0)]
+            if not sub.empty and sub['Qtd_pedido'].sum() > 0:
+                pu_dict[chave] = sub['Val_pedido'].sum() / sub['Qtd_pedido'].sum()
+                completados_via_pedido += 1
+        print(f"  ✅ PU completado via preço do próprio pedido: {completados_via_pedido} chaves")
+
+    return pu_dict
+
+
+# ─────────────────────────────────────────────
+# ETAPA 3 — VALORAÇÃO (aplica PU sobre as quantidades já prontas)
+# ─────────────────────────────────────────────
+def valorar(df_qtd, pu_dict):
+    print("\n💰 Valorando as quantidades projetadas...")
+
+    df = df_qtd.copy()
+    df['pu']         = df['chave'].map(pu_dict).fillna(0.0)
+    df['rs_ini']      = (df['qtd_ini']     * df['pu']).round(2)
+    df['rs_entrada']  = (df['qtd_entrada'] * df['pu']).round(2)
+    df['rs_consumo']  = (df['qtd_consumo'] * df['pu']).round(2)
+    df['rs_final']    = (df['qtd_final']   * df['pu']).round(2)
+
+    sem_pu = df.loc[df['pu'] == 0, 'chave'].nunique()
+    if sem_pu:
+        print(f"  ⚠️  {sem_pu} materiais ficaram com PU = 0 (valor R$ zerado, mas quantidade projetada normalmente)")
+
+    df = df.drop(columns='chave')
+    return df
 
 
 # ─────────────────────────────────────────────
@@ -318,8 +432,12 @@ def exportar(df_proj, df_resumo):
 # MAIN
 # ─────────────────────────────────────────────
 def executar():
-    df_est, entradas, consumo, meta_classe, pu_dict = ler_bases()
-    df_proj   = projetar(df_est, entradas, consumo, meta_classe, pu_dict)
+    df_est, entradas, consumo, meta_classe, df_ped = ler_bases()
+
+    df_qtd  = projetar_quantidade(df_est, entradas, consumo, meta_classe)
+    pu_dict = montar_pu_efetivo(df_est, df_ped)
+    df_proj = valorar(df_qtd, pu_dict)
+
     df_resumo = resumo_mensal(df_proj)
 
     print("\n📊 RESUMO DA PROJEÇÃO 2026:")
