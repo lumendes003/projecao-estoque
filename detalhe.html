@@ -306,7 +306,7 @@
             <th onclick="ordenar('rs_ini')">R$ Ini</th>
             <th onclick="ordenar('qtd_entrada')" class="pos">Qtd Entrada</th>
             <th onclick="ordenar('rs_entrada')" class="pos">R$ Entrada</th>
-            <th onclick="ordenar('preco_medio')">Preço Médio</th>
+            <th onclick="ordenar('pu')">Preço Médio</th>
             <th onclick="ordenar('qtd_consumo')" class="neg">Qtd Consumo</th>
             <th onclick="ordenar('rs_consumo')" class="neg">R$ Consumo</th>
             <th onclick="ordenar('qtd_final')">Qtd Final</th>
@@ -365,7 +365,7 @@ function ordenar(col){
   document.querySelectorAll('thead th').forEach(th => {
     th.classList.remove('sort-asc','sort-desc');
   });
-  const idx = ['cod','empresa','descricao','qtd_ini','rs_ini','qtd_entrada','rs_entrada','preco_medio','qtd_consumo','rs_consumo','qtd_final','rs_final'].indexOf(col);
+  const idx = ['cod','empresa','descricao','qtd_ini','rs_ini','qtd_entrada','rs_entrada','pu','qtd_consumo','rs_consumo','qtd_final','rs_final'].indexOf(col);
   const ths = document.querySelectorAll('thead th');
   if(ths[idx]) ths[idx].classList.add(sortDir === 1 ? 'sort-asc' : 'sort-desc');
   filtrar();
@@ -392,7 +392,7 @@ function renderTabela(){
         <td>${fmtRS(r.rs_ini)}</td>
         <td class="${r.qtd_entrada > 0 ? 'pos' : ''}">${fmtN(r.qtd_entrada)}</td>
         <td class="${r.rs_entrada > 0 ? 'pos' : ''}">${fmtRS(r.rs_entrada)}</td>
-        <td>${fmtPM(r.preco_medio)}</td>
+        <td>${fmtPM(r.pu)}</td>
         <td class="${r.qtd_consumo > 0 ? 'neg' : ''}">${fmtN(r.qtd_consumo)}</td>
         <td class="${r.rs_consumo > 0 ? 'neg' : ''}">${fmtRS(r.rs_consumo)}</td>
         <td style="font-weight:500">${fmtN(r.qtd_final)}</td>
